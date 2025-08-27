@@ -4,7 +4,6 @@ import pandas as pd
 import googlemaps
 import datetime as dt
 import math
-import locale
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -12,13 +11,6 @@ st.set_page_config(
     page_icon="🚗",
     layout="centered"
 )
-
-# MODIFICACIÓN: Configurar el locale a español para los nombres de días y meses.
-# Esto es importante para que la fecha se muestre correctamente.
-try:
-    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
-except locale.Error:
-    st.warning("No se pudo configurar el idioma a español. La fecha podría mostrarse en inglés.")
 
 # --- SISTEMA DE LOGIN CON USUARIO Y CONTRASEÑA ---
 def check_login():
@@ -56,7 +48,6 @@ def cargar_datos_csv():
         df = pd.read_csv('tiempos.csv', delimiter=';', encoding='utf-8-sig', header=0)
         
         col_municipio_idx = 5 
-        # MODIFICACIÓN 4: Leemos la columna N (índice 13) para la distancia.
         col_distancia_idx = 13 
         col_minutos_idx = 16
 
@@ -107,36 +98,42 @@ def calcular_minutos_por_distancia(origen, destino, gmaps_client, velocidad_kmh=
     except Exception as e:
         return None, None, str(e)
 
-# MODIFICACIÓN 3: Nueva tabla de horarios con fecha dinámica.
+# SOLUCIÓN BUG 1 y 2: Tabla de horarios robusta y fecha en español sin `locale`.
 def mostrar_horas_de_salida(total_minutos_desplazamiento):
-    """Calcula y muestra las horas de salida en una tabla de tres columnas."""
+    """Calcula y muestra las horas de salida en una tabla Markdown bien formateada."""
     st.markdown("---")
     st.subheader("🕒 Horas de Salida Sugeridas")
 
+    # Diccionarios para traducción manual (solución robusta al problema de locale)
+    dias_es = {"Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles", "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo"}
+    meses_es = {"January": "enero", "February": "febrero", "March": "marzo", "April": "abril", "May": "mayo", "June": "junio", "July": "julio", "August": "agosto", "September": "septiembre", "October": "octubre", "November": "noviembre", "December": "diciembre"}
+
     hoy = dt.date.today()
-    dia_semana_hoy = hoy.weekday()
-    es_viernes = (dia_semana_hoy == 4)
-    
-    # Formateamos la fecha actual en español (ej: "Miércoles 29 de mayo")
-    fecha_formateada = hoy.strftime('%A %d de %B').capitalize()
+    dia_en = hoy.strftime('%A')
+    mes_en = hoy.strftime('%B')
+    fecha_formateada = f"{dias_es.get(dia_en, dia_en)} {hoy.day} de {meses_es.get(mes_en, mes_en)}"
+
+    es_viernes = (hoy.weekday() == 4)
     
     horarios_base = {
         "Verano": (dt.time(14, 0) if es_viernes else dt.time(15, 0)),
         "Habitual Intensivo": (dt.time(15, 0) if es_viernes else dt.time(16, 0)),
         "Normal": (dt.time(16, 0) if es_viernes else dt.time(17, 0))
     }
-
-    tabla = f"""
-    | Horario              | Hora Salida Habitual | Hora Salida Hoy ({fecha_formateada}) |
-    | -------------------- | -------------------- | ------------------------------------- |
-    """
+    
+    # Construcción segura de la tabla para evitar errores de formato
+    tabla_rows = [
+        f"| Horario              | Hora Salida Habitual | Hora Salida Hoy ({fecha_formateada}) |",
+        "| -------------------- | -------------------- | ------------------------------------- |"
+    ]
     
     for nombre, hora_habitual in horarios_base.items():
         salida_dt_hoy = dt.datetime.combine(hoy, hora_habitual) - dt.timedelta(minutes=total_minutos_desplazamiento)
+        fila = f"| **{nombre}** | {hora_habitual.strftime('%H:%M')} | **{salida_dt_hoy.strftime('%H:%M')}** |"
+        tabla_rows.append(fila)
         
-        tabla += f"| **{nombre}** | {hora_habitual.strftime('%H:%M')} | **{salida_dt_hoy.strftime('%H:%M')}** |\n"
-        
-    st.markdown(tabla)
+    st.markdown("\n".join(tabla_rows))
+
 
 def main_app():
     """La aplicación principal que se muestra después del login."""
@@ -159,14 +156,19 @@ def main_app():
             if mun_entrada and mun_salida:
                 min_entrada = int(municipios_min.get(mun_entrada, 0))
                 min_salida = int(municipios_min.get(mun_salida, 0))
-                total = min_entrada + min_salida
-
-                # MODIFICACIÓN 4: Añadimos aviso de dieta para el CSV.
                 dist_entrada = municipios_dist.get(mun_entrada, 0)
                 dist_salida = municipios_dist.get(mun_salida, 0)
-                if dist_entrada > 40 or dist_salida > 40:
+                
+                # NUEVA MEJORA: Alertas de tiempo y distancia
+                if dist_entrada > 80 or dist_salida > 80:
+                    st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km. Comprueba posible pernocta.")
+                elif dist_entrada > 40 or dist_salida > 40:
                     st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                
+                if min_entrada > 60 or min_salida > 60:
+                     st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
 
+                total = min_entrada + min_salida
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
                 
@@ -215,43 +217,34 @@ def main_app():
                         origen_vuelta_norm = origen_vuelta.strip().lower()
                         destino_vuelta_norm = destino_vuelta.strip().lower()
 
-                        # MODIFICACIÓN 1 Y 2: Lógica para trayectos idénticos.
+                        st.markdown("---")
                         if origen_ida_norm == destino_vuelta_norm and destino_ida_norm == origen_vuelta_norm:
                             st.info("ℹ️ Detectado trayecto de ida y vuelta idéntico.")
+                            dist_max, min_max = (dist_ida, min_ida_brutos) if min_ida_brutos >= min_vuelta_brutos else (dist_vuelta, min_vuelta_brutos)
                             
-                            # Determinamos cuál es el trayecto más largo
-                            if min_ida_brutos >= min_vuelta_brutos:
-                                dist_max = dist_ida
-                                min_max = min_ida_brutos
-                            else:
-                                dist_max = dist_vuelta
-                                min_max = min_vuelta_brutos
-                            
-                            # Mostramos solo un resultado para el trayecto más largo
-                            st.markdown("---")
-                            # MODIFICACIÓN 4: Aviso de dieta
-                            if dist_max > 40:
+                            # NUEVA MEJORA: Alertas de tiempo y distancia para trayecto idéntico
+                            if dist_max > 80:
+                                st.warning("🛌 **Aviso Pernocta:** El trayecto supera los 80km. Comprueba posible pernocta.")
+                            elif dist_max > 40:
                                 st.warning("⚠️ **Aviso Media Dieta:** El trayecto supera los 40km. Comprueba el tipo de jornada.")
+                            if min_max > 60:
+                                st.warning("⏰ **Aviso Jornada:** El trayecto supera los 60 minutos. Comprueba el tipo de jornada.")
 
                             min_a_cargo_unico = _calcular_minutos_a_cargo(min_max)
-                            st.metric(
-                                label=f"TRAYECTO MÁS LARGO ({dist_max:.1f} km)",
-                                value=f"{min_a_cargo_unico} min a cargo",
-                                delta=f"Tiempo total: {min_max} min",
-                                delta_color="off"
-                            )
-                            # El total a cargo es el del trayecto más largo x 2 (ida y vuelta)
+                            st.metric(label=f"TRAYECTO MÁS LARGO ({dist_max:.1f} km)", value=f"{min_a_cargo_unico} min a cargo", delta=f"Tiempo total: {min_max} min", delta_color="off")
                             total_final = min_a_cargo_unico * 2
                         else:
-                            # Lógica original para trayectos diferentes
+                            # NUEVA MEJORA: Alertas de tiempo y distancia para trayectos diferentes
+                            if dist_ida > 80 or dist_vuelta > 80:
+                                st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km. Comprueba posible pernocta.")
+                            elif dist_ida > 40 or dist_vuelta > 40:
+                                st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                            if min_ida_brutos > 60 or min_vuelta_brutos > 60:
+                                st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
+
                             min_a_cargo_ida = _calcular_minutos_a_cargo(min_ida_brutos)
                             min_a_cargo_vuelta = _calcular_minutos_a_cargo(min_vuelta_brutos)
                             total_final = min_a_cargo_ida + min_a_cargo_vuelta
-                            
-                            st.markdown("---")
-                            # MODIFICACIÓN 4: Aviso de dieta
-                            if dist_ida > 40 or dist_vuelta > 40:
-                                st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
                             
                             st.metric(label=f"IDA: {dist_ida:.1f} km", value=f"{min_a_cargo_ida} min a cargo", delta=f"Tiempo total: {min_ida_brutos} min", delta_color="off")
                             st.metric(label=f"VUELTA: {dist_vuelta:.1f} km", value=f"{min_a_cargo_vuelta} min a cargo", delta=f"Tiempo total: {min_vuelta_brutos} min", delta_color="off")
