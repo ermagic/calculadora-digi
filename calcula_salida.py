@@ -1,4 +1,4 @@
-# app.py
+# app.py (o calcula_salida.py)
 import streamlit as st
 import pandas as pd
 import googlemaps
@@ -12,8 +12,9 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- SISTEMA DE LOGIN ---
+# --- SISTEMA DE LOGIN CON USUARIO Y CONTRASEÑA ---
 def check_login():
+    """Muestra un formulario de login y devuelve True si las credenciales son correctas."""
     if st.session_state.get('authentication_status'):
         return True
 
@@ -29,6 +30,7 @@ def check_login():
                     st.session_state['authentication_status'] = True
                     st.session_state['username'] = username
                     st.rerun()
+            
             st.session_state['authentication_status'] = False
             st.error("😕 Usuario o contraseña incorrectos.")
         except Exception as e:
@@ -38,9 +40,13 @@ def check_login():
     return False
 
 # --- LÓGICA DE LA CALCULADORA ---
+
+# MODIFICACIÓN 1: La función ya no necesita un argumento.
 @st.cache_data
 def cargar_datos_csv():
+    """Carga los datos del archivo 'tiempos.csv' local."""
     try:
+        # Lee el archivo directamente desde la carpeta del proyecto.
         df = pd.read_csv('tiempos.csv', delimiter=';', encoding='utf-8-sig', header=0)
         
         col_municipio_idx = 5 
@@ -73,6 +79,10 @@ def cargar_datos_csv():
         return None, None
 
 def calcular_minutos_por_distancia(origen, destino, gmaps_client, velocidad_kmh=90):
+    """
+    Calcula el tiempo de viaje en minutos basándose en la distancia y una velocidad fija.
+    Devuelve la distancia en km y el tiempo total en minutos.
+    """
     try:
         ruta = gmaps_client.directions(origen, destino, mode="driving")
         if not ruta:
@@ -87,21 +97,22 @@ def calcular_minutos_por_distancia(origen, destino, gmaps_client, velocidad_kmh=
     except Exception as e:
         return None, None, str(e)
 
-def generar_mapa_embed(origen, destino, api_key):
-    origen_q = origen.replace(' ', '+')
-    destino_q = destino.replace(' ', '+')
-    return f"https://www.google.com/maps/embed/v1/directions?key={api_key}&origin={origen_q}&destination={destino_q}&mode=driving"
 
 def main_app():
+    """La aplicación principal que se muestra después del login."""
+    
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
 
     tab1, tab2 = st.tabs([" Cáculo Local (CSV) ", "  Cálculo Interprovincial (Google)  "])
 
-    # TAB 1
     with tab1:
         st.header("Cálculo desde archivo local (tiempos.csv)")
+        
+        # MODIFICACIÓN 2: Se llama a la función sin argumentos.
         municipios_min, lista_municipios = cargar_datos_csv()
+        
+        # MODIFICACIÓN 3: Se quita el "if uploaded_file" y se comprueba directamente si los datos se cargaron.
         if municipios_min and lista_municipios:
             st.markdown("---")
             mun_entrada = st.selectbox("Destino del comienzo de la jornada:", lista_municipios, index=None, placeholder="Selecciona un municipio")
@@ -115,6 +126,7 @@ def main_app():
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
                 
+                # Esta lógica ya era correcta para los viernes.
                 dia_semana_hoy = dt.date.today().weekday()
                 hora_base = dt.time(14, 0) if dia_semana_hoy == 4 else dt.time(15, 0)
                 salida_dt = dt.datetime.combine(dt.date.today(), hora_base) - dt.timedelta(minutes=total)
@@ -122,9 +134,9 @@ def main_app():
         else:
             st.info("Esperando a que el archivo 'tiempos.csv' sea válido o esté disponible.")
 
-    # TAB 2
     with tab2:
         st.header("Cálculo por distancia (90 km/h)")
+        
         try:
             gmaps = googlemaps.Client(key=st.secrets["google_api_key"])
         except Exception:
@@ -184,4 +196,6 @@ def main_app():
                         st.success(f"**Minutos totales de desplazamiento a cargo:** {total_final}")
                         st.success(f"## Hora de salida hoy: {salida_dt.strftime('%H:%M')}")
 
-                        # --- NUEVOS MAPAS EMB
+# --- ESTRUCTURA PRINCIPAL DEL SCRIPT ---
+if check_login():
+    main_app()
