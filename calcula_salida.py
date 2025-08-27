@@ -17,7 +17,6 @@ if 'calculation_results' not in st.session_state: st.session_state.calculation_r
 
 # --- SISTEMA DE LOGIN ---
 def check_login():
-    # ... (El código de login no cambia, lo dejo aquí por completitud)
     if st.session_state.get('authentication_status'): return True
     st.header("Inicio de Sesión")
     username = st.text_input("Usuario")
@@ -36,10 +35,9 @@ def check_login():
             st.error(f"Error en la configuración de credenciales: {e}")
     return False
 
-# --- LÓGICA DE CÁLCULO (sin cambios) ---
+# --- LÓGICA DE CÁLCULO ---
 @st.cache_data
 def cargar_datos_csv(filename):
-    # ... (sin cambios)
     try:
         df = pd.read_csv(filename, delimiter=';', encoding='utf-8-sig', header=0)
         col_municipio_idx, col_distancia_idx, col_minutos_idx = 5, 13, 16
@@ -59,7 +57,6 @@ def cargar_datos_csv(filename):
         return None, None, None
 
 def calcular_minutos_por_distancia(origen, destino, gmaps_client):
-    # ... (sin cambios)
     try:
         ruta = gmaps_client.directions(origen, destino, mode="driving", avoid="tolls")
         if not ruta: return None, None, "No se encontró una ruta sin peajes."
@@ -69,7 +66,6 @@ def calcular_minutos_por_distancia(origen, destino, gmaps_client):
     except Exception as e: return None, None, str(e)
 
 def mostrar_horas_de_salida(total_minutos_desplazamiento):
-    # ... (sin cambios)
     st.markdown("---"); st.subheader("🕒 Horas de Salida Sugeridas")
     dias_es = {"Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles", "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo"}
     meses_es = {"January": "enero", "February": "febrero", "March": "marzo", "April": "abril", "May": "mayo", "June": "junio", "July": "julio", "August": "agosto", "September": "septiembre", "October": "octubre", "November": "noviembre", "December": "diciembre"}
@@ -89,12 +85,20 @@ def mostrar_horas_de_salida(total_minutos_desplazamiento):
     st.session_state.calculation_results['horas_salida'] = horas_salida_hoy
     st.markdown("\n".join(tabla_rows))
 
-# --- NUEVO: FUNCIÓN PARA CARGAR EMPLEADOS DESDE CSV ---
+# --- FUNCIÓN CORREGIDA PARA CARGAR EMPLEADOS CON SEPARADOR '|' ---
 @st.cache_data
 def cargar_datos_empleados(filename="employees.csv"):
     try:
-        # Usamos delimitador por coma, estándar para CSV. Si tu export es con ';', cámbialo aquí.
-        df = pd.read_csv(filename, delimiter=',')
+        # AQUÍ ESTÁ EL CAMBIO: Usamos el delimitador de pipe '|'
+        df = pd.read_csv(filename, delimiter='|', encoding='utf-8-sig')
+    except FileNotFoundError:
+        st.error(f"❌ Error: No se encuentra el archivo '{filename}'. Asegúrate de que está en la misma carpeta que la aplicación.")
+        return None
+    except Exception as e:
+        st.error(f"Error al procesar el archivo '{filename}'. Revisa que el separador sea '|'. Error: {e}")
+        return None
+    
+    try:
         # Limpieza de datos
         df = df.dropna(subset=['PROVINCIA', 'EQUIPO', 'NOMBRE COMPLETO', 'EMAIL'])
         df['PROVINCIA'] = df['PROVINCIA'].str.strip()
@@ -102,22 +106,20 @@ def cargar_datos_empleados(filename="employees.csv"):
         df['NOMBRE COMPLETO'] = df['NOMBRE COMPLETO'].str.strip()
         df['EMAIL'] = df['EMAIL'].str.strip()
         return df
-    except FileNotFoundError:
-        st.error(f"❌ Error: No se encuentra el archivo '{filename}'. Asegúrate de que está en la misma carpeta que la aplicación.")
+    except KeyError as e:
+        st.error(f"El archivo '{filename}' no tiene la columna requerida: {e}. Revisa el nombre de las columnas en tu CSV.")
         return None
     except Exception as e:
-        st.error(f"Error al procesar el archivo de empleados: {e}")
+        st.error(f"Error inesperado al limpiar los datos del archivo de empleados: {e}")
         return None
 
 # --- APLICACIÓN DE CÁLCULO ---
 def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
-
     tab1, tab2 = st.tabs([" Cálculo Dentro de la Provincia (CSV) ", "  Cálculo Interprovincial (Google)  "])
-
+    
     with tab1:
-        # ... (código de la pestaña 1 sin cambios, solo el botón)
         st.header("Cálculo Dentro de la Provincia (tiempos.csv)")
         municipios_min, municipios_dist, lista_municipios = cargar_datos_csv('tiempos.csv')
         if municipios_min and lista_municipios and municipios_dist:
@@ -130,9 +132,9 @@ def full_calculator_app():
                 st.session_state.calculation_results['aviso_pernocta'] = dist_entrada > 80 or dist_salida > 80
                 st.session_state.calculation_results['aviso_dieta'] = (dist_entrada > 40 or dist_salida > 40) and not st.session_state.calculation_results['aviso_pernocta']
                 st.session_state.calculation_results['aviso_jornada'] = min_entrada > 60 or min_salida > 60
-                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** ...")
-                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** ...")
-                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** ...")
+                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km.")
+                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km.")
+                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos.")
                 total = min_entrada + min_salida
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
@@ -143,13 +145,9 @@ def full_calculator_app():
                     st.rerun()
 
     with tab2:
-        # --- CORRECCIÓN DEL BUG: Contenido de la pestaña interprovincial restaurado ---
         st.header("Cálculo por distancia (90 km/h)")
         try: gmaps = googlemaps.Client(key=st.secrets["google_api_key"])
-        except Exception:
-            st.error("Error: La clave de API de Google no está disponible en `secrets.toml`.")
-            st.stop()
-        
+        except Exception: st.error("Error: La clave de API de Google no está disponible en `secrets.toml`."); st.stop()
         col1, col2 = st.columns(2)
         with col1:
             origen_ida = st.text_input("Origen (ida)", key="origen_ida")
@@ -157,23 +155,19 @@ def full_calculator_app():
         with col2:
             origen_vuelta = st.text_input("Origen (vuelta)", key="origen_vuelta")
             destino_vuelta = st.text_input("Destino (vuelta)", key="destino_vuelta")
-
         if st.button("Calcular Tiempo por Distancia", type="primary"):
             if all([origen_ida, destino_ida, origen_vuelta, destino_vuelta]):
                 with st.spinner('Calculando...'):
                     dist_ida, min_ida, err_ida = calcular_minutos_por_distancia(origen_ida, destino_ida, gmaps)
                     dist_vuelta, min_vuelta, err_vuelta = calcular_minutos_por_distancia(origen_vuelta, destino_vuelta, gmaps)
-                    
                     if err_ida or err_vuelta:
-                        if err_ida: st.error(f"Error ida: {err_ida}")
+                        if err_ida: st.error(f"Error ida: {err_ida}"); 
                         if err_vuelta: st.error(f"Error vuelta: {err_vuelta}")
                     else:
                         def _cargo(minutos): return max(0, minutos - 30)
                         st.markdown("---")
                         es_identico = origen_ida.strip().lower() == destino_vuelta.strip().lower() and destino_ida.strip().lower() == origen_vuelta.strip().lower()
-                        
                         if es_identico:
-                            # ... (lógica para trayecto idéntico)
                             st.info("ℹ️ Detectado trayecto de ida y vuelta idéntico.")
                             dist, mins = (dist_ida, min_ida) if min_ida >= min_vuelta else (dist_vuelta, min_vuelta)
                             st.session_state.calculation_results['aviso_pernocta'] = dist > 80
@@ -185,36 +179,33 @@ def full_calculator_app():
                             st.metric(f"TRAYECTO MÁS LARGO ({dist:.1f} km)", f"{_cargo(mins)} min a cargo", f"Tiempo total: {mins} min", delta_color="off")
                             total_final = _cargo(mins) * 2
                         else:
-                             # ... (lógica para trayectos diferentes)
                             st.session_state.calculation_results['aviso_pernocta'] = dist_ida > 80 or dist_vuelta > 80
                             st.session_state.calculation_results['aviso_dieta'] = (dist_ida > 40 or dist_vuelta > 40) and not st.session_state.calculation_results['aviso_pernocta']
                             st.session_state.calculation_results['aviso_jornada'] = min_ida > 60 or min_vuelta > 60
-                            if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** ...")
-                            elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** ...")
-                            if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** ...")
+                            if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km.")
+                            elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km.")
+                            if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos.")
                             st.metric(f"IDA: {dist_ida:.1f} km", f"{_cargo(min_ida)} min a cargo", f"Tiempo total: {min_ida} min", delta_color="off")
                             st.metric(f"VUELTA: {dist_vuelta:.1f} km", f"{_cargo(min_vuelta)} min a cargo", f"Tiempo total: {min_vuelta} min", delta_color="off")
                             total_final = _cargo(min_ida) + _cargo(min_vuelta)
-                        
                         st.markdown("---")
                         st.success(f"**Minutos totales de desplazamiento a cargo:** {total_final}")
                         mostrar_horas_de_salida(total_final)
                         st.session_state.calculation_results['total_minutos'] = total_final
-                        # Este botón ahora funcionará
                         if st.button("📧 Enviar mail al equipo", key="btn_gmaps_mail"):
                             st.session_state.page = 'email_form'
                             st.rerun()
             else:
                 st.warning("Por favor, rellene las cuatro direcciones.")
 
-# --- PÁGINA DE EMAIL (MODIFICADA) ---
+# --- PÁGINA DE EMAIL ---
 def email_form_app():
     st.title("📧 Redactar y Enviar Notificación")
     if st.button("⬅️ Volver a la calculadora"): st.session_state.page = 'calculator'; st.rerun()
     st.markdown("---")
     
     employees_df = cargar_datos_empleados()
-    if employees_df is None: return # Detiene la ejecución si el archivo no se carga
+    if employees_df is None: return
 
     st.header("1. Selecciona Destinatarios")
     col1, col2 = st.columns(2)
@@ -224,10 +215,8 @@ def email_form_app():
         equipos_en_delegacion = employees_df[employees_df['PROVINCIA'] == delegacion_sel]['EQUIPO'].unique()
         equipo_sel = st.selectbox("Filtrar por Equipo:", equipos_en_delegacion)
     
-    # Lista de personas disponibles para seleccionar
     personas_disponibles = employees_df[(employees_df['PROVINCIA'] == delegacion_sel) & (employees_df['EQUIPO'] == equipo_sel)]
     
-    # --- MODIFICADO: Selector múltiple ---
     nombres_seleccionados = st.multiselect(
         "Añadir o quitar personas:",
         options=personas_disponibles['NOMBRE COMPLETO'].tolist(),
@@ -238,15 +227,13 @@ def email_form_app():
         st.info("Selecciona al menos un destinatario para continuar.")
         return
 
-    # Obtener emails de los seleccionados
     destinatarios_df = employees_df[employees_df['NOMBRE COMPLETO'].isin(nombres_seleccionados)]
     recipient_emails = destinatarios_df['EMAIL'].tolist()
 
-    # --- MODIFICADO: Saludo dinámico ---
     def crear_saludo(nombres):
         if not nombres: return "Hola,"
-        if len(nombres) == 1: return f"Hola {nombres[0].split()[0]},"
         nombres_cortos = [name.split()[0] for name in nombres]
+        if len(nombres_cortos) == 1: return f"Hola {nombres_cortos[0]},"
         return f"Hola {', '.join(nombres_cortos[:-1])} y {nombres_cortos[-1]},"
 
     saludo = crear_saludo(nombres_seleccionados)
@@ -261,7 +248,6 @@ def email_form_app():
     if tipo_mail == "Comunicar Horario de Salida":
         asunto_pred = f"Horario de salida para el {res.get('fecha', 'día de hoy')}"
         cuerpo_pred = f"{saludo}\n\nTe informo del horario de salida calculado para hoy, {res.get('fecha', '')}, basado en un desplazamiento total a cargo de **{res.get('total_minutos', 0)} minutos**:\n\n- Salida en horario de Verano: **{res.get('horas_salida', {}).get('Verano', 'N/A')}**\n- Salida en horario Intensivo: **{res.get('horas_salida', {}).get('Habitual Intensivo', 'N/A')}**\n- Salida en horario Normal: **{res.get('horas_salida', {}).get('Normal', 'N/A')}**\n\nSaludos,\n{st.session_state['username']}"
-    # ... (el resto de plantillas usan `saludo` de la misma forma)
     elif tipo_mail == "Notificar Tipo de Jornada":
         asunto_pred = f"Confirmación de jornada para el {res.get('fecha', 'día de hoy')}"
         cuerpo_pred = f"{saludo}\n\nDebido a los desplazamientos del día de hoy ({res.get('fecha', '')}), por favor, confirma el tipo de jornada a aplicar.\n\nRecuerda que los avisos generados han sido:\n- Media Dieta (>40km): **{'Sí' if res.get('aviso_dieta') else 'No'}**\n- Jornada Especial (>60min): **{'Sí' if res.get('aviso_jornada') else 'No'}**\n\nQuedo a la espera de tu confirmación.\n\nSaludos,\n{st.session_state['username']}"
