@@ -85,7 +85,7 @@ def cargar_datos_csv():
 def calcular_minutos_por_distancia(origen, destino, gmaps_client, velocidad_kmh=90):
     """Calcula el tiempo de viaje en minutos basándose en la distancia y una velocidad fija."""
     try:
-        ruta = gmaps_client.directions(origen, destino, mode="driving")
+        ruta = gmaps_client.directions(origen, destino, mode="driving", avoid="tolls")
         if not ruta:
             return None, None, "No se encontró una ruta."
         
