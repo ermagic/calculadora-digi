@@ -94,162 +94,6 @@ def mostrar_horas_de_salida(total_minutos_desplazamiento):
     st.session_state.calculation_results['horas_salida'] = horas_salida_hoy
     st.markdown("\n".join(tabla_rows))
 
-# --- MÓDULO DE CÁLCULO (Página Principal) ---
-def calculator_app():
-    st.image("logo_digi.png", width=250)
-    st.title(f"Bienvenido, {st.session_state['username']}!")
-    tab1, tab2 = st.tabs([" Cálculo Dentro de la Provincia (CSV) ", "  Cálculo Interprovincial (Google)  "])
-    
-    with tab1:
-        # ... (El código de la pestaña 1 es idéntico al anterior, pero con el botón de email) ...
-        # Por brevedad, lo he resumido. El código completo lo tiene. La clave es añadir esto al final:
-        if 'total_minutos' in locals() and total_minutos is not None:
-             st.session_state.calculation_results['total_minutos'] = total_minutos
-             if st.button("📧 Enviar mail al equipo", key="btn_csv_mail"):
-                st.session_state.page = 'email_form'
-                st.rerun()
-    
-    with tab2:
-        # ... (El código de la pestaña 2 es idéntico al anterior, pero con el botón de email) ...
-        # Por brevedad, lo he resumido. La clave es añadir esto al final:
-        if 'total_final' in locals() and total_final is not None:
-             st.session_state.calculation_results['total_minutos'] = total_final
-             if st.button("📧 Enviar mail al equipo", key="btn_gmaps_mail"):
-                st.session_state.page = 'email_form'
-                st.rerun()
-
-# --- NUEVO: MÓDULO DE ENVÍO DE EMAIL (Nueva Página) ---
-def email_form_app():
-    st.title("📧 Redactar y Enviar Notificación")
-
-    if st.button("⬅️ Volver a la calculadora"):
-        st.session_state.page = 'calculator'
-        st.rerun()
-
-    st.markdown("---")
-    
-    # Cargar datos de empleados desde secrets.toml
-    try:
-        employees_df = pd.DataFrame(st.secrets["employees"])
-    except Exception:
-        st.error("No se han podido cargar los datos de los empleados. Revisa tu `secrets.toml`.")
-        return
-
-    # --- 1. SELECCIÓN DE PLANTILLA Y DESTINATARIO ---
-    st.header("1. Selecciona Plantilla y Destinatario")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        # Selectores dinámicos
-        delegacion_sel = st.selectbox("Delegación", employees_df['delegacion'].unique())
-        puestos_en_delegacion = employees_df[employees_df['delegacion'] == delegacion_sel]['puesto'].unique()
-        puesto_sel = st.selectbox("Puesto", puestos_en_delegacion)
-        
-    with col2:
-        trabajadores_filtrados = employees_df[(employees_df['delegacion'] == delegacion_sel) & (employees_df['puesto'] == puesto_sel)]
-        trabajador_sel = st.selectbox("Trabajador", trabajadores_filtrados['nombre'])
-    
-    destinatario_info = trabajadores_filtrados[trabajadores_filtrados['nombre'] == trabajador_sel].iloc[0]
-    st.info(f"Se enviará un correo a: **{destinatario_info['nombre']}** ({destinatario_info['email']})")
-
-    tipo_mail = st.radio(
-        "Selecciona el tipo de notificación:",
-        ["Comunicar Horario de Salida", "Notificar Tipo de Jornada", "Informar de Pernocta"],
-        horizontal=True, key="mail_type"
-    )
-
-    # --- 2. VISTA PREVIA DEL CORREO ---
-    st.header("2. Revisa y Edita el Correo")
-
-    # Generar texto basado en la plantilla y los resultados guardados
-    res = st.session_state.calculation_results
-    asunto_pred = ""
-    cuerpo_pred = ""
-
-    if tipo_mail == "Comunicar Horario de Salida":
-        asunto_pred = f"Horario de salida para el {res.get('fecha', 'día de hoy')}"
-        cuerpo_pred = f"""
-Hola {destinatario_info['nombre'].split()[0]},
-
-Te informo del horario de salida calculado para hoy, {res.get('fecha', '')}, basado en un desplazamiento total de **{res.get('total_minutos', 0)} minutos**:
-
-- **Salida en horario de Verano:** {res.get('horas_salida', {}).get('Verano', 'N/A')}
-- **Salida en horario Intensivo:** {res.get('horas_salida', {}).get('Habitual Intensivo', 'N/A')}
-- **Salida en horario Normal:** {res.get('horas_salida', {}).get('Normal', 'N/A')}
-
-Saludos,
-{st.session_state['username']}
-"""
-    elif tipo_mail == "Notificar Tipo de Jornada":
-        asunto_pred = f"Confirmación de jornada para el {res.get('fecha', 'día de hoy')}"
-        cuerpo_pred = f"""
-Hola {destinatario_info['nombre'].split()[0]},
-
-Debido a los desplazamientos del día de hoy ({res.get('fecha', '')}), por favor, confirma el tipo de jornada a aplicar.
-
-Recuerda que los avisos generados han sido:
-- **Media Dieta (>40km):** {'Sí' if res.get('aviso_dieta') else 'No'}
-- **Jornada Especial (>60min):** {'Sí' if res.get('aviso_jornada') else 'No'}
-
-Quedo a la espera de tu confirmación.
-
-Saludos,
-{st.session_state['username']}
-"""
-    elif tipo_mail == "Informar de Pernocta":
-        asunto_pred = f"Aviso de posible pernocta - {res.get('fecha', 'día de hoy')}"
-        cuerpo_pred = f"""
-Hola {destinatario_info['nombre'].split()[0]},
-
-El cálculo de desplazamiento para hoy, {res.get('fecha', '')}, ha generado un aviso por superar los 80km, lo que podría implicar una pernocta.
-
-Por favor, revisa la planificación y gestiona la reserva de hotel si es necesario.
-
-Saludos,
-{st.session_state['username']}
-"""
-
-    asunto = st.text_input("Asunto:", asunto_pred)
-    cuerpo = st.text_area("Cuerpo del Mensaje:", cuerpo_pred, height=300)
-
-    # --- 3. ENVIAR ---
-    st.markdown("---")
-    if st.button("🚀 Enviar Email", type="primary"):
-        with st.spinner("Enviando correo..."):
-            enviado_ok = send_email(destinatario_info['email'], asunto, cuerpo)
-            if enviado_ok:
-                st.success("¡Correo enviado correctamente!")
-            else:
-                st.error("Hubo un problema al enviar el correo. Revisa la configuración en `secrets.toml` y la consola para más detalles.")
-
-def send_email(recipient_email, subject, body):
-    """Función para enviar el correo usando smtplib y las credenciales de secrets."""
-    try:
-        smtp_cfg = st.secrets["smtp"]
-        sender_email = smtp_cfg["username"]
-        
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
-        
-        server = smtplib.SMTP(smtp_cfg["server"], smtp_cfg["port"])
-        server.starttls()
-        server.login(sender_email, smtp_cfg["password"])
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Error al enviar email: {e}") # Esto se verá en la terminal/logs de Streamlit
-        return False
-
-
-# --- ESTRUCTURA PRINCIPAL DEL SCRIPT ---
-# Para no hacer el código excesivamente largo, he omitido el cuerpo de `calculator_app`
-# Debes pegar el código de `main_app` de la versión anterior dentro de la nueva `calculator_app`
-# y añadir los botones de "Enviar mail al equipo" como se indica.
-
 def full_calculator_app():
     """Esta es la función completa que reemplaza a la antigua `main_app`."""
     st.image("logo_digi.png", width=250)
@@ -272,12 +116,12 @@ def full_calculator_app():
                 
                 # Guardar avisos para el email
                 st.session_state.calculation_results['aviso_pernocta'] = dist_entrada > 80 or dist_salida > 80
-                st.session_state.calculation_results['aviso_dieta'] = dist_entrada > 40 or dist_salida > 40
+                st.session_state.calculation_results['aviso_dieta'] = (dist_entrada > 40 or dist_salida > 40) and not st.session_state.calculation_results['aviso_pernocta']
                 st.session_state.calculation_results['aviso_jornada'] = min_entrada > 60 or min_salida > 60
 
-                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** ...")
-                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** ...")
-                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** ...")
+                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km. Comprueba posible pernocta.")
+                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
 
                 total = min_entrada + min_salida
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
@@ -290,20 +134,134 @@ def full_calculator_app():
                     st.rerun()
 
     with tab2:
-        # El código de la pestaña 2 va aquí, con la misma lógica para el botón.
         st.header("Cálculo por distancia (90 km/h)")
-        # ... (todo el código de la pestaña 2 que ya tenías)
-        # Y al final, después de calcular `total_final`, añade:
-        # st.session_state.calculation_results['total_minutos'] = total_final
-        # if st.button("📧 Enviar mail al equipo", key="btn_gmaps_mail"):
-        #     st.session_state.page = 'email_form'
-        #     st.rerun()
-        pass # Placeholder para que pegues tu código
+        try: gmaps = googlemaps.Client(key=st.secrets["google_api_key"])
+        except Exception:
+            st.error("Error: La clave de API de Google no está disponible en `secrets.toml`.")
+            st.stop()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            origen_ida = st.text_input("Origen (ida)")
+            destino_ida = st.text_input("Destino (ida)")
+        with col2:
+            origen_vuelta = st.text_input("Origen (vuelta)")
+            destino_vuelta = st.text_input("Destino (vuelta)")
 
+        if st.button("Calcular Tiempo por Distancia", type="primary"):
+            if not all([origen_ida, destino_ida, origen_vuelta, destino_vuelta]):
+                st.warning("Por favor, rellene las cuatro direcciones.")
+            else:
+                with st.spinner('Calculando...'):
+                    dist_ida, min_ida, err_ida = calcular_minutos_por_distancia(origen_ida, destino_ida, gmaps)
+                    dist_vuelta, min_vuelta, err_vuelta = calcular_minutos_por_distancia(origen_vuelta, destino_vuelta, gmaps)
+                    
+                    if err_ida or err_vuelta:
+                        if err_ida: st.error(f"Error ida: {err_ida}")
+                        if err_vuelta: st.error(f"Error vuelta: {err_vuelta}")
+                    else:
+                        def _cargo(minutos): return max(0, minutos - 30)
+                        
+                        st.markdown("---")
+                        # Lógica para mostrar resultados y avisos
+                        es_identico = origen_ida.strip().lower() == destino_vuelta.strip().lower() and destino_ida.strip().lower() == origen_vuelta.strip().lower()
+                        
+                        if es_identico:
+                            st.info("ℹ️ Detectado trayecto de ida y vuelta idéntico.")
+                            dist, mins = (dist_ida, min_ida) if min_ida >= min_vuelta else (dist_vuelta, min_vuelta)
+                            st.session_state.calculation_results['aviso_pernocta'] = dist > 80
+                            st.session_state.calculation_results['aviso_dieta'] = dist > 40 and not st.session_state.calculation_results['aviso_pernocta']
+                            st.session_state.calculation_results['aviso_jornada'] = mins > 60
+                            if st.session_state.calculation_results['aviso_pernocta']: st.warning(f"🛌 **Aviso Pernocta:** El trayecto ({dist:.1f} km) supera los 80km.")
+                            elif st.session_state.calculation_results['aviso_dieta']: st.warning(f"⚠️ **Aviso Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km.")
+                            if st.session_state.calculation_results['aviso_jornada']: st.warning(f"⏰ **Aviso Jornada:** El trayecto ({mins} min) supera los 60 minutos.")
+                            
+                            st.metric(f"TRAYECTO MÁS LARGO ({dist:.1f} km)", f"{_cargo(mins)} min a cargo", f"Tiempo total: {mins} min", delta_color="off")
+                            total_final = _cargo(mins) * 2
+                        else:
+                            st.session_state.calculation_results['aviso_pernocta'] = dist_ida > 80 or dist_vuelta > 80
+                            st.session_state.calculation_results['aviso_dieta'] = (dist_ida > 40 or dist_vuelta > 40) and not st.session_state.calculation_results['aviso_pernocta']
+                            st.session_state.calculation_results['aviso_jornada'] = min_ida > 60 or min_vuelta > 60
+                            if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** ...")
+                            elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** ...")
+                            if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** ...")
+
+                            st.metric(f"IDA: {dist_ida:.1f} km", f"{_cargo(min_ida)} min a cargo", f"Tiempo total: {min_ida} min", delta_color="off")
+                            st.metric(f"VUELTA: {dist_vuelta:.1f} km", f"{_cargo(min_vuelta)} min a cargo", f"Tiempo total: {min_vuelta} min", delta_color="off")
+                            total_final = _cargo(min_ida) + _cargo(min_vuelta)
+                        
+                        st.markdown("---")
+                        st.success(f"**Minutos totales de desplazamiento a cargo:** {total_final}")
+                        mostrar_horas_de_salida(total_final)
+                        st.session_state.calculation_results['total_minutos'] = total_final
+                        if st.button("📧 Enviar mail al equipo", key="btn_gmaps_mail"):
+                            st.session_state.page = 'email_form'
+                            st.rerun()
+
+def email_form_app():
+    st.title("📧 Redactar y Enviar Notificación")
+    if st.button("⬅️ Volver a la calculadora"):
+        st.session_state.page = 'calculator'
+        st.rerun()
+    st.markdown("---")
+    try: employees_df = pd.DataFrame(st.secrets["employees"])
+    except Exception:
+        st.error("No se han podido cargar los datos de los empleados. Revisa tu `secrets.toml`.")
+        return
+    st.header("1. Selecciona Plantilla y Destinatario")
+    col1, col2 = st.columns(2)
+    with col1:
+        delegacion_sel = st.selectbox("Delegación", employees_df['delegacion'].unique())
+        puestos_en_delegacion = employees_df[employees_df['delegacion'] == delegacion_sel]['puesto'].unique()
+        puesto_sel = st.selectbox("Puesto", puestos_en_delegacion)
+    with col2:
+        trabajadores_filtrados = employees_df[(employees_df['delegacion'] == delegacion_sel) & (employees_df['puesto'] == puesto_sel)]
+        trabajador_sel = st.selectbox("Trabajador", trabajadores_filtrados['nombre'])
+    destinatario_info = trabajadores_filtrados[trabajadores_filtrados['nombre'] == trabajador_sel].iloc[0]
+    st.info(f"Se enviará un correo a: **{destinatario_info['nombre']}** ({destinatario_info['email']})")
+    tipo_mail = st.radio("Selecciona el tipo de notificación:", ["Comunicar Horario de Salida", "Notificar Tipo de Jornada", "Informar de Pernocta"], horizontal=True)
+    st.header("2. Revisa y Edita el Correo")
+    res = st.session_state.calculation_results
+    asunto_pred, cuerpo_pred = "", ""
+    if tipo_mail == "Comunicar Horario de Salida":
+        asunto_pred = f"Horario de salida para el {res.get('fecha', 'día de hoy')}"
+        cuerpo_pred = f"Hola {destinatario_info['nombre'].split()[0]},\n\nTe informo del horario de salida calculado para hoy, {res.get('fecha', '')}, basado en un desplazamiento total a cargo de **{res.get('total_minutos', 0)} minutos**:\n\n- Salida en horario de Verano: **{res.get('horas_salida', {}).get('Verano', 'N/A')}**\n- Salida en horario Intensivo: **{res.get('horas_salida', {}).get('Habitual Intensivo', 'N/A')}**\n- Salida en horario Normal: **{res.get('horas_salida', {}).get('Normal', 'N/A')}**\n\nSaludos,\n{st.session_state['username']}"
+    elif tipo_mail == "Notificar Tipo de Jornada":
+        asunto_pred = f"Confirmación de jornada para el {res.get('fecha', 'día de hoy')}"
+        cuerpo_pred = f"Hola {destinatario_info['nombre'].split()[0]},\n\nDebido a los desplazamientos del día de hoy ({res.get('fecha', '')}), por favor, confirma el tipo de jornada a aplicar.\n\nRecuerda que los avisos generados han sido:\n- Media Dieta (>40km): **{'Sí' if res.get('aviso_dieta') else 'No'}**\n- Jornada Especial (>60min): **{'Sí' if res.get('aviso_jornada') else 'No'}**\n\nQuedo a la espera de tu confirmación.\n\nSaludos,\n{st.session_state['username']}"
+    elif tipo_mail == "Informar de Pernocta":
+        asunto_pred = f"Aviso de posible pernocta - {res.get('fecha', 'día de hoy')}"
+        cuerpo_pred = f"Hola {destinatario_info['nombre'].split()[0]},\n\nEl cálculo de desplazamiento para hoy, {res.get('fecha', '')}, ha generado un aviso por superar los 80km, lo que podría implicar una pernocta.\n\nPor favor, revisa la planificación y gestiona la reserva de hotel si es necesario.\n\nSaludos,\n{st.session_state['username']}"
+    asunto = st.text_input("Asunto:", asunto_pred)
+    cuerpo = st.text_area("Cuerpo del Mensaje:", cuerpo_pred, height=250)
+    st.markdown("---")
+    if st.button("🚀 Enviar Email", type="primary"):
+        with st.spinner("Enviando correo..."):
+            if send_email(destinatario_info['email'], asunto, cuerpo):
+                st.success("¡Correo enviado correctamente!")
+            else:
+                st.error("Hubo un problema al enviar el correo. Revisa la configuración en `secrets.toml` y la consola para más detalles.")
+
+def send_email(recipient_email, subject, body):
+    try:
+        smtp_cfg = st.secrets["smtp"]
+        sender_email, password = smtp_cfg["username"], smtp_cfg["password"]
+        msg = MIMEMultipart()
+        msg['From'], msg['To'], msg['Subject'] = sender_email, recipient_email, subject
+        msg.attach(MIMEText(body, 'plain'))
+        server = smtplib.SMTP(smtp_cfg["server"], smtp_cfg["port"])
+        server.starttls()
+        server.login(sender_email, password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Error técnico: {e}") # Muestra el error real en la UI para depurar
+        return False
 
 # --- Controlador de Página Principal ---
 if check_login():
     if st.session_state.page == 'calculator':
-        full_calculator_app() # Reemplaza el `main_app` de antes con esta función completa
+        full_calculator_app()
     elif st.session_state.page == 'email_form':
         email_form_app()
