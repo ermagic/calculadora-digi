@@ -41,12 +41,10 @@ def check_login():
 
 # --- LÓGICA DE LA CALCULADORA ---
 
-# MODIFICACIÓN 1: La función ya no necesita un argumento.
 @st.cache_data
 def cargar_datos_csv():
     """Carga los datos del archivo 'tiempos.csv' local."""
     try:
-        # Lee el archivo directamente desde la carpeta del proyecto.
         df = pd.read_csv('tiempos.csv', delimiter=';', encoding='utf-8-sig', header=0)
         
         col_municipio_idx = 5 
@@ -97,6 +95,31 @@ def calcular_minutos_por_distancia(origen, destino, gmaps_client, velocidad_kmh=
     except Exception as e:
         return None, None, str(e)
 
+# MODIFICACIÓN 1: Nueva función para mostrar los 3 horarios.
+def mostrar_horas_de_salida(total_minutos_desplazamiento):
+    """Calcula y muestra las horas de salida para los tres tipos de jornada."""
+    st.markdown("---")
+    st.subheader("🕒 Horas de Salida Sugeridas")
+
+    dia_semana_hoy = dt.date.today().weekday()
+    es_viernes = (dia_semana_hoy == 4)
+    
+    # Definir las horas de fin de jornada base para cada horario
+    horarios = {
+        "Verano": dt.time(14, 0) if es_viernes else dt.time(15, 0),
+        "Habitual Intensivo": dt.time(15, 0) if es_viernes else dt.time(16, 0),
+        "Normal": dt.time(16, 0) if es_viernes else dt.time(17, 0)
+    }
+
+    # Crear una tabla con Markdown para una mejor presentación
+    tabla_resultados = "| Horario              | Hora de Salida Hoy |\n| -------------------- | ------------------ |\n"
+    
+    for nombre, hora_base in horarios.items():
+        salida_dt = dt.datetime.combine(dt.date.today(), hora_base) - dt.timedelta(minutes=total_minutos_desplazamiento)
+        hora_formateada = salida_dt.strftime('%H:%M')
+        tabla_resultados += f"| **{nombre}** | **{hora_formateada}**      |\n"
+        
+    st.markdown(tabla_resultados)
 
 def main_app():
     """La aplicación principal que se muestra después del login."""
@@ -104,15 +127,15 @@ def main_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
 
-    tab1, tab2 = st.tabs([" Cáculo Local (CSV) ", "  Cálculo Interprovincial (Google)  "])
+    # MODIFICACIÓN 3: Cambiado el nombre de la primera pestaña.
+    tab1, tab2 = st.tabs([" Cálculo Dentro de la Provincia (CSV) ", "  Cálculo Interprovincial (Google)  "])
 
     with tab1:
-        st.header("Cálculo desde archivo local (tiempos.csv)")
+        # MODIFICACIÓN 3: Cambiado el título del header para que coincida.
+        st.header("Cálculo Dentro de la Provincia (tiempos.csv)")
         
-        # MODIFICACIÓN 2: Se llama a la función sin argumentos.
         municipios_min, lista_municipios = cargar_datos_csv()
         
-        # MODIFICACIÓN 3: Se quita el "if uploaded_file" y se comprueba directamente si los datos se cargaron.
         if municipios_min and lista_municipios:
             st.markdown("---")
             mun_entrada = st.selectbox("Destino del comienzo de la jornada:", lista_municipios, index=None, placeholder="Selecciona un municipio")
@@ -126,11 +149,9 @@ def main_app():
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
                 
-                # Esta lógica ya era correcta para los viernes.
-                dia_semana_hoy = dt.date.today().weekday()
-                hora_base = dt.time(14, 0) if dia_semana_hoy == 4 else dt.time(15, 0)
-                salida_dt = dt.datetime.combine(dt.date.today(), hora_base) - dt.timedelta(minutes=total)
-                st.success(f"## Hora de salida hoy: {salida_dt.strftime('%H:%M')}")
+                # MODIFICACIÓN 1: Llamamos a la nueva función para mostrar los horarios.
+                mostrar_horas_de_salida(total)
+
         else:
             st.info("Esperando a que el archivo 'tiempos.csv' sea válido o esté disponible.")
 
@@ -160,9 +181,6 @@ def main_app():
             else:
                 with st.spinner('Calculando distancias y tiempos...'):
                     
-                    def _calcular_minutos_a_cargo(minutos_totales):
-                        return max(0, minutos_totales - 30)
-
                     dist_ida, min_ida_brutos, err_ida = calcular_minutos_por_distancia(origen_ida, destino_ida, gmaps)
                     dist_vuelta, min_vuelta_brutos, err_vuelta = calcular_minutos_por_distancia(origen_vuelta, destino_vuelta, gmaps)
 
@@ -170,13 +188,26 @@ def main_app():
                         if err_ida: st.error(f"Error en ruta de ida: {err_ida}")
                         if err_vuelta: st.error(f"Error en ruta de vuelta: {err_vuelta}")
                     else:
+                        # MODIFICACIÓN 2: Lógica para trayectos inversos.
+                        # Normalizamos textos para evitar problemas de mayúsculas/espacios.
+                        origen_ida_norm = origen_ida.strip().lower()
+                        destino_ida_norm = destino_ida.strip().lower()
+                        origen_vuelta_norm = origen_vuelta.strip().lower()
+                        destino_vuelta_norm = destino_vuelta.strip().lower()
+
+                        if origen_ida_norm == destino_vuelta_norm and destino_ida_norm == origen_vuelta_norm:
+                            st.info("ℹ️ Detectado trayecto de ida y vuelta idéntico. Se usará el tiempo más largo para ambos cálculos.")
+                            tiempo_maximo = max(min_ida_brutos, min_vuelta_brutos)
+                            min_ida_brutos = tiempo_maximo
+                            min_vuelta_brutos = tiempo_maximo
+
+                        def _calcular_minutos_a_cargo(minutos_totales):
+                            return max(0, minutos_totales - 30)
+
                         min_a_cargo_ida = _calcular_minutos_a_cargo(min_ida_brutos)
                         min_a_cargo_vuelta = _calcular_minutos_a_cargo(min_vuelta_brutos)
                         
                         total_final = min_a_cargo_ida + min_a_cargo_vuelta
-                        dia_semana_hoy = dt.date.today().weekday()
-                        hora_base = dt.time(14, 0) if dia_semana_hoy == 4 else dt.time(15, 0)
-                        salida_dt = dt.datetime.combine(dt.date.today(), hora_base) - dt.timedelta(minutes=total_final)
                         
                         st.markdown("---")
                         st.metric(
@@ -194,7 +225,9 @@ def main_app():
                         st.markdown("---")
                         
                         st.success(f"**Minutos totales de desplazamiento a cargo:** {total_final}")
-                        st.success(f"## Hora de salida hoy: {salida_dt.strftime('%H:%M')}")
+                        
+                        # MODIFICACIÓN 1: Llamamos a la nueva función para mostrar los horarios.
+                        mostrar_horas_de_salida(total_final)
 
 # --- ESTRUCTURA PRINCIPAL DEL SCRIPT ---
 if check_login():
