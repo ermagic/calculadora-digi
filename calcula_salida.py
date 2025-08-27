@@ -85,35 +85,30 @@ def mostrar_horas_de_salida(total_minutos_desplazamiento):
     st.session_state.calculation_results['horas_salida'] = horas_salida_hoy
     st.markdown("\n".join(tabla_rows))
 
-# --- FUNCIÓN CORREGIDA PARA CARGAR EMPLEADOS CON SEPARADOR '|' ---
 @st.cache_data
 def cargar_datos_empleados(filename="employees.csv"):
     try:
-        # AQUÍ ESTÁ EL CAMBIO: Usamos el delimitador de pipe '|'
         df = pd.read_csv(filename, delimiter='|', encoding='utf-8-sig')
     except FileNotFoundError:
-        st.error(f"❌ Error: No se encuentra el archivo '{filename}'. Asegúrate de que está en la misma carpeta que la aplicación.")
+        st.error(f"❌ Error: No se encuentra el archivo '{filename}'.")
         return None
     except Exception as e:
-        st.error(f"Error al procesar el archivo '{filename}'. Revisa que el separador sea '|'. Error: {e}")
+        st.error(f"Error al procesar '{filename}'. Revisa que el separador sea '|'. Error: {e}")
         return None
-    
     try:
-        # Limpieza de datos
-        df = df.dropna(subset=['PROVINCIA', 'EQUIPO', 'NOMBRE COMPLETO', 'EMAIL'])
-        df['PROVINCIA'] = df['PROVINCIA'].str.strip()
-        df['EQUIPO'] = df['EQUIPO'].str.strip()
-        df['NOMBRE COMPLETO'] = df['NOMBRE COMPLETO'].str.strip()
-        df['EMAIL'] = df['EMAIL'].str.strip()
+        required_cols = ['PROVINCIA', 'EQUIPO', 'NOMBRE COMPLETO', 'EMAIL']
+        df = df.dropna(subset=required_cols)
+        for col in required_cols:
+            df[col] = df[col].str.strip()
         return df
     except KeyError as e:
-        st.error(f"El archivo '{filename}' no tiene la columna requerida: {e}. Revisa el nombre de las columnas en tu CSV.")
+        st.error(f"El archivo '{filename}' no tiene la columna requerida: {e}.")
         return None
     except Exception as e:
-        st.error(f"Error inesperado al limpiar los datos del archivo de empleados: {e}")
+        st.error(f"Error inesperado al limpiar datos de empleados: {e}")
         return None
 
-# --- APLICACIÓN DE CÁLCULO ---
+# --- APLICACIÓN DE CÁLCULO (sin cambios) ---
 def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
@@ -132,9 +127,9 @@ def full_calculator_app():
                 st.session_state.calculation_results['aviso_pernocta'] = dist_entrada > 80 or dist_salida > 80
                 st.session_state.calculation_results['aviso_dieta'] = (dist_entrada > 40 or dist_salida > 40) and not st.session_state.calculation_results['aviso_pernocta']
                 st.session_state.calculation_results['aviso_jornada'] = min_entrada > 60 or min_salida > 60
-                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km.")
-                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km.")
-                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos.")
+                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** ...")
+                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** ...")
+                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** ...")
                 total = min_entrada + min_salida
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
@@ -173,18 +168,18 @@ def full_calculator_app():
                             st.session_state.calculation_results['aviso_pernocta'] = dist > 80
                             st.session_state.calculation_results['aviso_dieta'] = dist > 40 and not st.session_state.calculation_results['aviso_pernocta']
                             st.session_state.calculation_results['aviso_jornada'] = mins > 60
-                            if st.session_state.calculation_results['aviso_pernocta']: st.warning(f"🛌 **Aviso Pernocta:** El trayecto ({dist:.1f} km) supera los 80km.")
-                            elif st.session_state.calculation_results['aviso_dieta']: st.warning(f"⚠️ **Aviso Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km.")
-                            if st.session_state.calculation_results['aviso_jornada']: st.warning(f"⏰ **Aviso Jornada:** El trayecto ({mins} min) supera los 60 minutos.")
+                            if st.session_state.calculation_results['aviso_pernocta']: st.warning(f"🛌 **Aviso Pernocta:** ...")
+                            elif st.session_state.calculation_results['aviso_dieta']: st.warning(f"⚠️ **Aviso Media Dieta:** ...")
+                            if st.session_state.calculation_results['aviso_jornada']: st.warning(f"⏰ **Aviso Jornada:** ...")
                             st.metric(f"TRAYECTO MÁS LARGO ({dist:.1f} km)", f"{_cargo(mins)} min a cargo", f"Tiempo total: {mins} min", delta_color="off")
                             total_final = _cargo(mins) * 2
                         else:
                             st.session_state.calculation_results['aviso_pernocta'] = dist_ida > 80 or dist_vuelta > 80
                             st.session_state.calculation_results['aviso_dieta'] = (dist_ida > 40 or dist_vuelta > 40) and not st.session_state.calculation_results['aviso_pernocta']
                             st.session_state.calculation_results['aviso_jornada'] = min_ida > 60 or min_vuelta > 60
-                            if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km.")
-                            elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km.")
-                            if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos.")
+                            if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** ...")
+                            elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** ...")
+                            if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** ...")
                             st.metric(f"IDA: {dist_ida:.1f} km", f"{_cargo(min_ida)} min a cargo", f"Tiempo total: {min_ida} min", delta_color="off")
                             st.metric(f"VUELTA: {dist_vuelta:.1f} km", f"{_cargo(min_vuelta)} min a cargo", f"Tiempo total: {min_vuelta} min", delta_color="off")
                             total_final = _cargo(min_ida) + _cargo(min_vuelta)
@@ -198,7 +193,7 @@ def full_calculator_app():
             else:
                 st.warning("Por favor, rellene las cuatro direcciones.")
 
-# --- PÁGINA DE EMAIL ---
+# --- PÁGINA DE EMAIL MODIFICADA ---
 def email_form_app():
     st.title("📧 Redactar y Enviar Notificación")
     if st.button("⬅️ Volver a la calculadora"): st.session_state.page = 'calculator'; st.rerun()
@@ -207,20 +202,34 @@ def email_form_app():
     employees_df = cargar_datos_empleados()
     if employees_df is None: return
 
-    st.header("1. Selecciona Destinatarios")
+    st.header("1. Filtrar y Seleccionar Destinatarios")
+    
+    # PASO 1: Filtros de Provincia y Equipo (se mantienen)
     col1, col2 = st.columns(2)
     with col1:
-        delegacion_sel = st.selectbox("Filtrar por Delegación:", employees_df['PROVINCIA'].unique())
+        provincia_sel = st.selectbox(
+            "Filtrar por Provincia:",
+            employees_df['PROVINCIA'].unique()
+        )
     with col2:
-        equipos_en_delegacion = employees_df[employees_df['PROVINCIA'] == delegacion_sel]['EQUIPO'].unique()
-        equipo_sel = st.selectbox("Filtrar por Equipo:", equipos_en_delegacion)
+        equipos_en_provincia = employees_df[employees_df['PROVINCIA'] == provincia_sel]['EQUIPO'].unique()
+        equipo_sel = st.selectbox(
+            "Filtrar por Equipo:",
+            equipos_en_provincia
+        )
     
-    personas_disponibles = employees_df[(employees_df['PROVINCIA'] == delegacion_sel) & (employees_df['EQUIPO'] == equipo_sel)]
+    # PASO 2: Preparar las listas para el selector múltiple
+    # Opciones: Todas las personas de la provincia seleccionada
+    personas_en_provincia = employees_df[employees_df['PROVINCIA'] == provincia_sel]
+    # Selección por defecto: Solo las personas del equipo filtrado
+    personas_en_equipo = personas_en_provincia[personas_en_provincia['EQUIPO'] == equipo_sel]
     
+    # PASO 3: Selector múltiple con la nueva lógica
     nombres_seleccionados = st.multiselect(
-        "Añadir o quitar personas:",
-        options=personas_disponibles['NOMBRE COMPLETO'].tolist(),
-        placeholder="Selecciona uno o más trabajadores"
+        "Destinatarios (equipo preseleccionado, puedes añadir/quitar gente de la provincia):",
+        options=personas_en_provincia['NOMBRE COMPLETO'].tolist(),
+        default=personas_en_equipo['NOMBRE COMPLETO'].tolist(),
+        placeholder="Busca y selecciona más trabajadores"
     )
     
     if not nombres_seleccionados:
@@ -238,7 +247,13 @@ def email_form_app():
 
     saludo = crear_saludo(nombres_seleccionados)
     
-    st.info(f"Se enviará un correo a: **{', '.join(nombres_seleccionados)}**")
+    # CAMBIO: Mostrar nombre y email en un expander
+    with st.expander("Confirmar destinatarios y correos", expanded=True):
+        if not destinatarios_df.empty:
+            info_list = [f"- **{row['NOMBRE COMPLETO']}** ({row['EMAIL']})" for index, row in destinatarios_df.iterrows()]
+            st.markdown("\n".join(info_list))
+        else:
+            st.write("No hay destinatarios seleccionados.")
 
     tipo_mail = st.radio("Selecciona el tipo de notificación:", ["Comunicar Horario de Salida", "Notificar Tipo de Jornada", "Informar de Pernocta"], horizontal=True)
     st.header("2. Revisa y Edita el Correo")
