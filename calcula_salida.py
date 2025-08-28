@@ -14,7 +14,6 @@ st.set_page_config(page_title="Calculadora y Notificaciones DIGI", page_icon="�
 # --- INICIALIZACIÓN DE ESTADO ---
 if 'page' not in st.session_state: st.session_state.page = 'calculator'
 if 'calculation_results' not in st.session_state: st.session_state.calculation_results = {}
-# NUEVO: Estado para guardar los resultados del cálculo de gmaps y persistirlos
 if 'gmaps_results' not in st.session_state: st.session_state.gmaps_results = None
 
 # --- SISTEMA DE LOGIN ---
@@ -118,13 +117,21 @@ def full_calculator_app():
                 min_entrada, min_salida = int(municipios_min.get(mun_entrada, 0)), int(municipios_min.get(mun_salida, 0))
                 dist_entrada, dist_salida = municipios_dist.get(mun_entrada, 0), municipios_dist.get(mun_salida, 0)
                 
-                # CORRECCIÓN BUG 2: Mensajes de alerta restaurados
-                st.session_state.calculation_results['aviso_pernocta'] = dist_entrada > 80 or dist_salida > 80
-                st.session_state.calculation_results['aviso_dieta'] = (dist_entrada > 40 or dist_salida > 40) and not st.session_state.calculation_results['aviso_pernocta']
+                # --- AQUÍ EMPIEZA LA CORRECCIÓN DEL BUG ---
+                st.session_state.calculation_results['aviso_pernocta'] = min_entrada > 80 or min_salida > 80
+                st.session_state.calculation_results['aviso_dieta'] = dist_entrada > 40 or dist_salida > 40
                 st.session_state.calculation_results['aviso_jornada'] = min_entrada > 60 or min_salida > 60
-                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km. Comprueba posible pernocta.")
-                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
-                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
+                
+                # Alertas independientes con `if` separados
+                if st.session_state.calculation_results['aviso_pernocta']:
+                    st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
+                
+                if st.session_state.calculation_results['aviso_dieta']:
+                    st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                
+                if st.session_state.calculation_results['aviso_jornada']:
+                    st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
+                # --- AQUÍ TERMINA LA CORRECCIÓN DEL BUG ---
 
                 total = min_entrada + min_salida
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
@@ -168,7 +175,6 @@ def full_calculator_app():
                 st.warning("Por favor, rellene las cuatro direcciones.")
                 st.session_state.gmaps_results = None
 
-        # CORRECCIÓN BUG 1: Mostrar resultados y botón de mail fuera del botón de cálculo
         if st.session_state.gmaps_results:
             res = st.session_state.gmaps_results
             def _cargo(minutos): return max(0, minutos - 30)
@@ -178,23 +184,36 @@ def full_calculator_app():
             if es_identico:
                 st.info("ℹ️ Detectado trayecto de ida y vuelta idéntico.")
                 dist, mins = (res['dist_ida'], res['min_ida']) if res['min_ida'] >= res['min_vuelta'] else (res['dist_vuelta'], res['min_vuelta'])
-                # CORRECCIÓN BUG 2: Mensajes de alerta restaurados
-                st.session_state.calculation_results['aviso_pernocta'] = dist > 80
-                st.session_state.calculation_results['aviso_dieta'] = dist > 40 and not st.session_state.calculation_results['aviso_pernocta']
+                
+                # --- AQUÍ EMPIEZA LA CORRECCIÓN DEL BUG (INTERPROVINCIAL - IDÉNTICO) ---
+                st.session_state.calculation_results['aviso_pernocta'] = mins > 80
+                st.session_state.calculation_results['aviso_dieta'] = dist > 40
                 st.session_state.calculation_results['aviso_jornada'] = mins > 60
-                if st.session_state.calculation_results['aviso_pernocta']: st.warning(f"🛌 **Aviso Pernocta:** El trayecto ({dist:.1f} km) supera los 80km. Comprueba posible pernocta.")
-                elif st.session_state.calculation_results['aviso_dieta']: st.warning(f"⚠️ **Aviso Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km. Comprueba el tipo de jornada.")
-                if st.session_state.calculation_results['aviso_jornada']: st.warning(f"⏰ **Aviso Jornada:** El trayecto ({mins} min) supera los 60 minutos. Comprueba el tipo de jornada.")
+                
+                if st.session_state.calculation_results['aviso_pernocta']:
+                    st.warning(f"🛌 **Aviso Pernocta:** El trayecto ({mins} min) supera los 80 minutos. Comprueba posible pernocta.")
+                if st.session_state.calculation_results['aviso_dieta']:
+                    st.warning(f"⚠️ **Aviso Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km. Comprueba el tipo de jornada.")
+                if st.session_state.calculation_results['aviso_jornada']:
+                    st.warning(f"⏰ **Aviso Jornada:** El trayecto ({mins} min) supera los 60 minutos. Comprueba el tipo de jornada.")
+                # --- AQUÍ TERMINA LA CORRECCIÓN DEL BUG ---
+                
                 st.metric(f"TRAYECTO MÁS LARGO ({dist:.1f} km)", f"{_cargo(mins)} min a cargo", f"Tiempo total: {mins} min", delta_color="off")
                 total_final = _cargo(mins) * 2
             else:
-                # CORRECCIÓN BUG 2: Mensajes de alerta restaurados
-                st.session_state.calculation_results['aviso_pernocta'] = res['dist_ida'] > 80 or res['dist_vuelta'] > 80
-                st.session_state.calculation_results['aviso_dieta'] = (res['dist_ida'] > 40 or res['dist_vuelta'] > 40) and not st.session_state.calculation_results['aviso_pernocta']
+                # --- AQUÍ EMPIEZA LA CORRECCIÓN DEL BUG (INTERPROVINCIAL - DIFERENTE) ---
+                st.session_state.calculation_results['aviso_pernocta'] = res['min_ida'] > 80 or res['min_vuelta'] > 80
+                st.session_state.calculation_results['aviso_dieta'] = res['dist_ida'] > 40 or res['dist_vuelta'] > 40
                 st.session_state.calculation_results['aviso_jornada'] = res['min_ida'] > 60 or res['min_vuelta'] > 60
-                if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80km. Comprueba posible pernocta.")
-                elif st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
-                if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
+                
+                if st.session_state.calculation_results['aviso_pernocta']:
+                    st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
+                if st.session_state.calculation_results['aviso_dieta']:
+                    st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                if st.session_state.calculation_results['aviso_jornada']:
+                    st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
+                # --- AQUÍ TERMINA LA CORRECCIÓN DEL BUG ---
+                
                 st.metric(f"IDA: {res['dist_ida']:.1f} km", f"{_cargo(res['min_ida'])} min a cargo", f"Tiempo total: {res['min_ida']} min", delta_color="off")
                 st.metric(f"VUELTA: {res['dist_vuelta']:.1f} km", f"{_cargo(res['min_vuelta'])} min a cargo", f"Tiempo total: {res['min_vuelta']} min", delta_color="off")
                 total_final = _cargo(res['min_ida']) + _cargo(res['min_vuelta'])
@@ -207,7 +226,7 @@ def full_calculator_app():
                 st.session_state.page = 'email_form'
                 st.rerun()
 
-# --- PÁGINA DE EMAIL (con la lógica de selección flexible) ---
+# --- PÁGINA DE EMAIL (sin cambios) ---
 def email_form_app():
     st.title("📧 Redactar y Enviar Notificación")
     if st.button("⬅️ Volver a la calculadora"): st.session_state.page = 'calculator'; st.rerun()
@@ -268,7 +287,7 @@ def email_form_app():
         cuerpo_pred = f"{saludo}\n\nDebido a los desplazamientos del día de hoy ({res.get('fecha', '')}), por favor, confirma el tipo de jornada a aplicar.\n\nRecuerda que los avisos generados han sido:\n- Media Dieta (>40km): **{'Sí' if res.get('aviso_dieta') else 'No'}**\n- Jornada Especial (>60min): **{'Sí' if res.get('aviso_jornada') else 'No'}**\n\nQuedo a la espera de tu confirmación.\n\nSaludos,\n{st.session_state['username']}"
     elif tipo_mail == "Informar de Pernocta":
         asunto_pred = f"Aviso de posible pernocta - {res.get('fecha', 'día de hoy')}"
-        cuerpo_pred = f"{saludo}\n\nEl cálculo de desplazamiento para hoy, {res.get('fecha', '')}, ha generado un aviso por superar los 80km, lo que podría implicar una pernocta.\n\nPor favor, revisa la planificación y gestiona la reserva de hotel si es necesario.\n\nSaludos,\n{st.session_state['username']}"
+        cuerpo_pred = f"{saludo}\n\nEl cálculo de desplazamiento para hoy, {res.get('fecha', '')}, ha generado un aviso por superar los 80 minutos, lo que podría implicar una pernocta.\n\nPor favor, revisa la planificación y gestiona la reserva de hotel si es necesario.\n\nSaludos,\n{st.session_state['username']}"
 
     asunto = st.text_input("Asunto:", asunto_pred)
     cuerpo = st.text_area("Cuerpo del Mensaje:", cuerpo_pred, height=250)
