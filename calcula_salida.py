@@ -43,53 +43,57 @@ def check_login():
 
 @st.cache_data
 def cargar_datos_csv():
-    """Carga y procesa los datos del archivo 'tiempos.csv' local."""
+    """Carga los datos del archivo 'tiempos.csv' local."""
     try:
+        # Se usa el nombre de archivo proporcionado
         df = pd.read_csv('tiempos.csv', delimiter=';', encoding='utf-8-sig', header=0)
         
-        # Índices de las columnas de interés
-        col_municipio_idx = 5 
-        col_km_idx = 13  # Columna N para los kilómetros
-        col_minutos_idx = 16
+        # --- INICIO DE CAMBIOS ---
+        # Se definen los índices de las columnas de interés
+        col_municipio_idx = 5  # Columna F: 'Municipio/Poblacion INE'
+        col_km_idx = 13        # Columna N: 'Distancia en Kms'
+        col_minutos_idx = 16   # Columna Q: 'Tiempo(Min)'
+        # --- FIN DE CAMBIOS ---
 
-        # Verificación de que el CSV tiene suficientes columnas
-        if len(df.columns) <= max(col_municipio_idx, col_km_idx, col_minutos_idx):
-            st.error(f"El archivo CSV debe tener al menos {max(col_municipio_idx, col_km_idx, col_minutos_idx) + 1} columnas.")
-            return None, None
+        if len(df.columns) <= col_minutos_idx:
+            st.error(f"El archivo CSV debe tener al menos {col_minutos_idx + 1} columnas.")
+            return None, None, None
             
-        # Renombrar columnas para facilitar el acceso
+        # --- INICIO DE CAMBIOS ---
+        # Se renombran las columnas de interés
         df.rename(columns={
             df.columns[col_municipio_idx]: 'municipio',
             df.columns[col_km_idx]: 'km',
             df.columns[col_minutos_idx]: 'minutos'
         }, inplace=True)
 
-        # Limpieza y preparación de datos
+        # Se seleccionan las columnas necesarias y se limpian los datos
         df_clean = df[['municipio', 'minutos', 'km']].dropna(subset=['municipio'])
         df_clean['municipio'] = df_clean['municipio'].str.strip()
         df_clean = df_clean[df_clean['municipio'] != '']
         
-        # Convertir a tipos numéricos, manejando errores
+        # Se convierten los minutos a entero
         df_clean['minutos'] = pd.to_numeric(df_clean['minutos'], errors='coerce').fillna(0).astype(int)
-        df_clean['km'] = pd.to_numeric(df_clean['km'], errors='coerce').fillna(0)
+        
+        # Se convierten los KM a número, reemplazando la coma decimal por un punto
+        df_clean['km'] = df_clean['km'].astype(str).str.replace(',', '.', regex=False)
+        df_clean['km'] = pd.to_numeric(df_clean['km'], errors='coerce').fillna(0.0)
 
-        # Agrupar por municipio y quedarse con el valor máximo (para evitar duplicados)
-        municipios_data = df_clean.groupby('municipio').agg(
-            minutos=('minutos', 'max'),
-            km=('km', 'max')
-        ).to_dict(orient='index')
+        # Se crean dos diccionarios, uno para minutos y otro para km, manteniendo la lógica original
+        municipios_min = df_clean.groupby('municipio')['minutos'].max().to_dict()
+        municipios_km = df_clean.groupby('municipio')['km'].max().to_dict()
         
-        # Crear la lista de municipios para los selectores
-        lista_municipios = sorted(municipios_data.keys(), key=lambda s: s.casefold())
+        lista_municipios = sorted(municipios_min.keys(), key=lambda s: s.casefold())
         
-        return municipios_data, lista_municipios
+        return municipios_min, municipios_km, lista_municipios
+        # --- FIN DE CAMBIOS ---
     except FileNotFoundError:
         st.error("❌ Error: No se pudo encontrar el archivo 'tiempos.csv'.")
         st.warning("Asegúrate de que el archivo está en la misma carpeta que el script de la aplicación.")
-        return None, None
+        return None, None, None
     except Exception as e:
         st.error(f"Error al procesar el archivo CSV: {e}")
-        return None, None
+        return None, None, None
 
 def calcular_minutos_por_distancia(origen, destino, gmaps_client, velocidad_kmh=90):
     """
@@ -122,43 +126,43 @@ def main_app():
     with tab1:
         st.header("Cálculo desde archivo local (tiempos.csv)")
         
-        municipios_data, lista_municipios = cargar_datos_csv()
+        # --- INICIO DE CAMBIOS ---
+        # Se reciben los 3 objetos de la función
+        municipios_min, municipios_km, lista_municipios = cargar_datos_csv()
         
-        if municipios_data and lista_municipios:
+        if municipios_min and lista_municipios:
+        # --- FIN DE CAMBIOS ---
             st.markdown("---")
             mun_entrada = st.selectbox("Destino del comienzo de la jornada:", lista_municipios, index=None, placeholder="Selecciona un municipio")
             mun_salida = st.selectbox("Destino del final de la jornada:", lista_municipios, index=None, placeholder="Selecciona un municipio")
 
             if mun_entrada and mun_salida:
-                # Obtener datos de minutos y KM para cada trayecto
-                datos_entrada = municipios_data.get(mun_entrada, {'minutos': 0, 'km': 0})
-                datos_salida = municipios_data.get(mun_salida, {'minutos': 0, 'km': 0})
-
-                min_entrada = int(datos_entrada['minutos'])
-                km_entrada = datos_salida['km']
+                # --- INICIO DE CAMBIOS ---
+                # Se obtienen los minutos y los kilómetros de sus respectivos diccionarios
+                min_entrada = int(municipios_min.get(mun_entrada, 0))
+                min_salida = int(municipios_min.get(mun_salida, 0))
+                km_entrada = float(municipios_km.get(mun_entrada, 0.0))
+                km_salida = float(municipios_km.get(mun_salida, 0.0))
                 
-                min_salida = int(datos_salida['minutos'])
-                km_salida = datos_salida['km']
-
                 total = min_entrada + min_salida
 
-                st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
+                # Se muestran tanto los minutos como los kilómetros
+                st.info(f"Entrada: **{min_entrada} min / {km_entrada:.2f} km** | Salida: **{min_salida} min / {km_salida:.2f} km**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
                 
-                # --- INICIO DE CAMBIOS ---
-                # Aviso si algún trayecto individual supera los 40 km
+                # AVISO 1: Comprobación de los 40 km
                 if km_entrada > 40 or km_salida > 40:
                     st.warning("⚠️ **Aviso:** Uno de los trayectos supera los 40 km.")
-                # --- FIN DE CAMBIOS ---
-                
-                # Aviso si algún trayecto individual supera los 60 minutos
+
+                # AVISO 2: Comprobación de los 60 minutos por trayecto
                 if min_entrada > 60 or min_salida > 60:
                     st.warning("⚠️ **Aviso:** Uno de los trayectos supera los 60 minutos.")
 
-                # Aviso si el total de minutos supera los 80 minutos
+                # AVISO 3: Comprobación de los 80 minutos totales
                 if total > 80:
                     st.warning("⚠️ **Aviso:** El tiempo total de desplazamiento supera los 80 minutos.")
-                
+                # --- FIN DE CAMBIOS ---
+
                 dia_semana_hoy = dt.date.today().weekday()
                 hora_base = dt.time(14, 0) if dia_semana_hoy == 4 else dt.time(15, 0)
                 salida_dt = dt.datetime.combine(dt.date.today(), hora_base) - dt.timedelta(minutes=total)
@@ -226,14 +230,15 @@ def main_app():
                         st.markdown("---")
                         
                         st.success(f"**Minutos totales de desplazamiento a cargo:** {total_final}")
-
-                        # Aviso si algún trayecto individual supera los 60 minutos
+                        
+                        # --- INICIO DE CAMBIOS (AÑADIDOS EN LA VERSIÓN ANTERIOR) ---
+                        # Se mantienen los avisos en la pestaña interprovincial que ya estaban bien
                         if min_a_cargo_ida > 60 or min_a_cargo_vuelta > 60:
                             st.warning("⚠️ **Aviso:** Uno de los trayectos a cargo de la empresa supera los 60 minutos.")
 
-                        # Aviso si el total de minutos supera los 80 minutos
                         if total_final > 80:
                             st.warning("⚠️ **Aviso:** El tiempo total de desplazamiento a cargo supera los 80 minutos.")
+                        # --- FIN DE CAMBIOS ---
                         
                         st.success(f"## Hora de salida hoy: {salida_dt.strftime('%H:%M')}")
 
