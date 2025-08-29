@@ -57,14 +57,58 @@ def cargar_datos_csv(filename):
         st.error(f"Error al procesar el archivo '{filename}': {e}")
         return None, None, None
 
-def calcular_minutos_por_distancia(origen, destino, gmaps_client):
+# --- NUEVA FUNCIÓN MEJORADA ---
+def calcular_minutos_con_limite(origen, destino, gmaps_client):
+    """
+    Calcula la duración de una ruta aplicando la misma lógica que el script de Google.
+    La duración de cada tramo no puede ser más rápida que ir a 90 km/h.
+    """
     try:
-        ruta = gmaps_client.directions(origen, destino, mode="driving", avoid="tolls")
-        if not ruta: return None, None, "No se encontró una ruta sin peajes."
-        distancia_km = ruta[0]['legs'][0]['distance']['value'] / 1000
-        tiempo_minutos = math.ceil((distancia_km / 90) * 60)
-        return distancia_km, tiempo_minutos, None
-    except Exception as e: return None, None, str(e)
+        # 1. Obtenemos las direcciones de Google
+        directions_result = gmaps_client.directions(origen, destino, mode="driving", avoid="tolls")
+        
+        if not directions_result or not directions_result[0]['legs']:
+            return None, None, "No se pudo encontrar una ruta para las direcciones proporcionadas."
+        
+        # 2. Accedemos a los tramos (steps) de la ruta
+        steps = directions_result[0]['legs'][0]['steps']
+        total_capped_duration_seconds = 0
+        total_distance_meters = 0
+
+        # 3. Iteramos sobre cada tramo para aplicar la lógica
+        for step in steps:
+            distancia_metros = step['distance']['value']
+            duracion_google_seg = step['duration']['value']
+            
+            # Sumamos la distancia para tener el total al final
+            total_distance_meters += distancia_metros
+            
+            # 4. Calculamos el tiempo teórico a 90 km/h para este tramo (en segundos)
+            # (distancia en km) / (velocidad en km/s) = tiempo en segundos
+            if distancia_metros > 0:
+                # 90 km/h = 90 / 3600 km/s
+                theoretical_duration_90kmh_seg = (distancia_metros / 1000) / (90 / 3600)
+            else:
+                theoretical_duration_90kmh_seg = 0
+            
+            # 5. Elegimos la duración más larga (limitando la velocidad a 90 km/h)
+            capped_duration_seg = max(duracion_google_seg, theoretical_duration_90kmh_seg)
+            
+            # 6. Sumamos al total
+            total_capped_duration_seconds += capped_duration_seg
+            
+        # 7. Convertimos los resultados finales
+        total_distancia_km = total_distance_meters / 1000
+        # Redondeamos hacia arriba los minutos, como en tu código original
+        total_minutos_final = math.ceil(total_capped_duration_seconds / 60)
+        
+        return total_distancia_km, total_minutos_final, None
+
+    except googlemaps.exceptions.ApiError as e:
+        return None, None, f"Error de la API de Google: {e}"
+    except Exception as e:
+        return None, None, f"Error inesperado: {e}"
+
 
 def mostrar_horas_de_salida(total_minutos_desplazamiento):
     st.markdown("---"); st.subheader("🕒 Horas de Salida Sugeridas")
@@ -117,12 +161,10 @@ def full_calculator_app():
                 min_entrada, min_salida = int(municipios_min.get(mun_entrada, 0)), int(municipios_min.get(mun_salida, 0))
                 dist_entrada, dist_salida = municipios_dist.get(mun_entrada, 0), municipios_dist.get(mun_salida, 0)
                 
-                # --- AQUÍ EMPIEZA LA CORRECCIÓN DEL BUG ---
                 st.session_state.calculation_results['aviso_pernocta'] = min_entrada > 80 or min_salida > 80
                 st.session_state.calculation_results['aviso_dieta'] = dist_entrada > 40 or dist_salida > 40
                 st.session_state.calculation_results['aviso_jornada'] = min_entrada > 60 or min_salida > 60
                 
-                # Alertas independientes con `if` separados
                 if st.session_state.calculation_results['aviso_pernocta']:
                     st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
                 
@@ -131,7 +173,6 @@ def full_calculator_app():
                 
                 if st.session_state.calculation_results['aviso_jornada']:
                     st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
-                # --- AQUÍ TERMINA LA CORRECCIÓN DEL BUG ---
 
                 total = min_entrada + min_salida
                 st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
@@ -158,8 +199,10 @@ def full_calculator_app():
         if st.button("Calcular Tiempo por Distancia", type="primary"):
             if all([origen_ida, destino_ida, origen_vuelta, destino_vuelta]):
                 with st.spinner('Calculando...'):
-                    dist_ida, min_ida, err_ida = calcular_minutos_por_distancia(origen_ida, destino_ida, gmaps)
-                    dist_vuelta, min_vuelta, err_vuelta = calcular_minutos_por_distancia(origen_vuelta, destino_vuelta, gmaps)
+                    # --- AQUÍ ESTÁ EL CAMBIO A LA NUEVA FUNCIÓN ---
+                    dist_ida, min_ida, err_ida = calcular_minutos_con_limite(origen_ida, destino_ida, gmaps)
+                    dist_vuelta, min_vuelta, err_vuelta = calcular_minutos_con_limite(origen_vuelta, destino_vuelta, gmaps)
+                    # --- FIN DEL CAMBIO ---
                     if err_ida or err_vuelta:
                         if err_ida: st.error(f"Error ida: {err_ida}")
                         if err_vuelta: st.error(f"Error vuelta: {err_vuelta}")
@@ -185,7 +228,6 @@ def full_calculator_app():
                 st.info("ℹ️ Detectado trayecto de ida y vuelta idéntico.")
                 dist, mins = (res['dist_ida'], res['min_ida']) if res['min_ida'] >= res['min_vuelta'] else (res['dist_vuelta'], res['min_vuelta'])
                 
-                # --- AQUÍ EMPIEZA LA CORRECCIÓN DEL BUG (INTERPROVINCIAL - IDÉNTICO) ---
                 st.session_state.calculation_results['aviso_pernocta'] = mins > 80
                 st.session_state.calculation_results['aviso_dieta'] = dist > 40
                 st.session_state.calculation_results['aviso_jornada'] = mins > 60
@@ -196,12 +238,10 @@ def full_calculator_app():
                     st.warning(f"⚠️ **Aviso Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km. Comprueba el tipo de jornada.")
                 if st.session_state.calculation_results['aviso_jornada']:
                     st.warning(f"⏰ **Aviso Jornada:** El trayecto ({mins} min) supera los 60 minutos. Comprueba el tipo de jornada.")
-                # --- AQUÍ TERMINA LA CORRECCIÓN DEL BUG ---
                 
                 st.metric(f"TRAYECTO MÁS LARGO ({dist:.1f} km)", f"{_cargo(mins)} min a cargo", f"Tiempo total: {mins} min", delta_color="off")
                 total_final = _cargo(mins) * 2
             else:
-                # --- AQUÍ EMPIEZA LA CORRECCIÓN DEL BUG (INTERPROVINCIAL - DIFERENTE) ---
                 st.session_state.calculation_results['aviso_pernocta'] = res['min_ida'] > 80 or res['min_vuelta'] > 80
                 st.session_state.calculation_results['aviso_dieta'] = res['dist_ida'] > 40 or res['dist_vuelta'] > 40
                 st.session_state.calculation_results['aviso_jornada'] = res['min_ida'] > 60 or res['min_vuelta'] > 60
@@ -212,7 +252,6 @@ def full_calculator_app():
                     st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
                 if st.session_state.calculation_results['aviso_jornada']:
                     st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
-                # --- AQUÍ TERMINA LA CORRECCIÓN DEL BUG ---
                 
                 st.metric(f"IDA: {res['dist_ida']:.1f} km", f"{_cargo(res['min_ida'])} min a cargo", f"Tiempo total: {res['min_ida']} min", delta_color="off")
                 st.metric(f"VUELTA: {res['dist_vuelta']:.1f} km", f"{_cargo(res['min_vuelta'])} min a cargo", f"Tiempo total: {res['min_vuelta']} min", delta_color="off")
