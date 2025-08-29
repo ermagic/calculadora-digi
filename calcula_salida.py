@@ -1,3 +1,4 @@
+# REEMPLAZA LA FUNCIÓN ANTIGUA CON ESTA
 def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
@@ -5,7 +6,6 @@ def full_calculator_app():
     
     with tab1:
         st.header("Cálculo Dentro de la Provincia (tiempos.csv)")
-        # --- MODIFICACIÓN AQUÍ ---
         # Ahora la función devuelve nuestro nuevo diccionario de datos
         municipio_data, lista_municipios = cargar_datos_csv('tiempos.csv')
         
@@ -21,7 +21,7 @@ def full_calculator_app():
                     lista_municipios, index=None, placeholder="Selecciona un municipio"
                 )
                 # Si se selecciona un municipio, mostramos su información
-                if mun_entrada:
+                if mun_entrada and mun_entrada in municipio_data:
                     info = municipio_data.get(mun_entrada)
                     st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
 
@@ -31,7 +31,7 @@ def full_calculator_app():
                     lista_municipios, index=None, placeholder="Selecciona un municipio"
                 )
                 # Si se selecciona un municipio, mostramos su información
-                if mun_salida:
+                if mun_salida and mun_salida in municipio_data:
                     info = municipio_data.get(mun_salida)
                     st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
 
@@ -60,6 +60,7 @@ def full_calculator_app():
                     st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
 
                 total = min_entrada + min_salida
+                st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
                 st.success(f"**Minutos totales de desplazamiento:** {total}")
                 
                 mostrar_horas_de_salida(total)
@@ -70,7 +71,7 @@ def full_calculator_app():
 
     # La Tab2 no ha sufrido ningún cambio
     with tab2:
-        st.header("Cálculo por distancia (90 km/h)")
+        st.header("Cálculo por distancia (Regla 90 km/h)")
         try: gmaps = googlemaps.Client(key=st.secrets["google_api_key"])
         except Exception: st.error("Error: La clave de API de Google no está disponible en `secrets.toml`."); st.stop()
         
