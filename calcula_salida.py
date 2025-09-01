@@ -155,6 +155,12 @@ def cargar_datos_empleados(filename="employees.csv"):
 def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
+    
+    # Define _cargo function here to be accessible by both tabs
+    def _cargo(minutos):
+        """Deduce 30 minutes from travel time, ensuring it doesn't go below zero."""
+        return max(0, minutos - 30)
+
     tab1, tab2 = st.tabs([" Cálculo Dentro de la Provincia (CSV) ", "  Cálculo Interprovincial (Google)  "])
     
     with tab1:
@@ -187,14 +193,19 @@ def full_calculator_app():
             if mun_entrada and mun_salida:
                 st.markdown("---")
                 
-                min_entrada = int(municipio_data[mun_entrada]['minutos'])
-                min_salida = int(municipio_data[mun_salida]['minutos'])
+                # Minutos originales del CSV para los avisos
+                min_entrada_total = int(municipio_data[mun_entrada]['minutos'])
+                min_salida_total = int(municipio_data[mun_salida]['minutos'])
                 dist_entrada = float(municipio_data[mun_entrada]['distancia'])
                 dist_salida = float(municipio_data[mun_salida]['distancia'])
                 
-                st.session_state.calculation_results['aviso_pernocta'] = min_entrada > 80 or min_salida > 80
+                # Aplicamos la regla de los 30 minutos a cada trayecto
+                min_entrada_a_cargo = _cargo(min_entrada_total)
+                min_salida_a_cargo = _cargo(min_salida_total)
+                
+                st.session_state.calculation_results['aviso_pernocta'] = min_entrada_total > 80 or min_salida_total > 80
                 st.session_state.calculation_results['aviso_dieta'] = dist_entrada > 40 or dist_salida > 40
-                st.session_state.calculation_results['aviso_jornada'] = min_entrada > 60 or min_salida > 60
+                st.session_state.calculation_results['aviso_jornada'] = min_entrada_total > 60 or min_salida_total > 60
                 
                 if st.session_state.calculation_results['aviso_pernocta']:
                     st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
@@ -205,12 +216,14 @@ def full_calculator_app():
                 if st.session_state.calculation_results['aviso_jornada']:
                     st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
 
-                total = min_entrada + min_salida
-                st.info(f"Minutos (entrada): **{min_entrada}** | Minutos (salida): **{min_salida}**")
-                st.success(f"**Minutos totales de desplazamiento:** {total}")
+                total_minutos_a_cargo = min_entrada_a_cargo + min_salida_a_cargo
                 
-                mostrar_horas_de_salida(total)
-                st.session_state.calculation_results['total_minutos'] = total
+                st.info(f"Minutos (entrada): **{min_entrada_a_cargo}** (Tiempo real: {min_entrada_total} min) | Minutos (salida): **{min_salida_a_cargo}** (Tiempo real: {min_salida_total} min)")
+                st.success(f"**Minutos totales de desplazamiento a cargo:** {total_minutos_a_cargo}")
+                
+                # Pasamos los minutos "a cargo" a la función de mostrar horas de salida
+                mostrar_horas_de_salida(total_minutos_a_cargo)
+                st.session_state.calculation_results['total_minutos'] = total_minutos_a_cargo
                 if st.button("📧 Enviar mail al equipo", key="btn_csv_mail"):
                     st.session_state.page = 'email_form'
                     st.rerun()
@@ -250,8 +263,6 @@ def full_calculator_app():
 
         if st.session_state.gmaps_results:
             res = st.session_state.gmaps_results
-            def _cargo(minutos): return max(0, minutos - 30)
-            st.markdown("---")
             # The problematic `if st.` line used to be around here. It's now removed.
             es_identico = res['origen_ida'].strip().lower() == res['destino_vuelta'].strip().lower() and res['destino_ida'].strip().lower() == res['origen_vuelta'].strip().lower()
             
