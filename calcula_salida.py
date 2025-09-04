@@ -42,47 +42,46 @@ def cargar_datos_csv(filename):
     try:
         df = pd.read_csv(filename, delimiter=';', encoding='utf-8-sig', header=0)
         
-        # --- CORRECCIÓN DE NOMBRES DE COLUMNAS ---
-        col_municipio = 'Municipio/Poblacion INE'
-        col_centro = 'Centro de Trabajo Nuevo'
-        col_distancia = 'Distancia en Kms'
-        col_minutos = 'Tiempo(Min)'
+        # --- NOMBRES DE COLUMNAS NUEVOS ---
+        col_poblacion = 'Poblacion_IC'
+        col_centro_trabajo = 'Centro de Trabajo Nuevo'
+        col_provincia_ct = 'Provincia Centro de Trabajo'
+        col_distancia = 'Distancia en K'
+        col_minutos_total = 'Tiempo(Min)'
+        col_minutos_cargo = 'Tiempo a cargo de empresa(Min)'
 
         df.rename(columns={
-            col_municipio: 'municipio',
-            col_centro: 'centro_trabajo',
+            col_poblacion: 'poblacion',
+            col_centro_trabajo: 'centro_trabajo',
+            col_provincia_ct: 'provincia_ct',
             col_distancia: 'distancia',
-            col_minutos: 'minutos'
+            col_minutos_total: 'minutos_total',
+            col_minutos_cargo: 'minutos_cargo'
         }, inplace=True)
 
-        # Asegurarnos de que las columnas existen
-        required_cols = ['municipio', 'minutos', 'distancia', 'centro_trabajo']
+        required_cols = ['poblacion', 'centro_trabajo', 'provincia_ct', 'distancia', 'minutos_total', 'minutos_cargo']
         if not all(col in df.columns for col in required_cols):
-            st.error(f"Error Crítico: El archivo '{filename}' no contiene todas las columnas necesarias. Revisa que existan: '{col_municipio}', '{col_centro}', '{col_distancia}', '{col_minutos}'.")
-            return None, None
+            st.error(f"Error Crítico: El archivo '{filename}' no contiene todas las columnas necesarias. Revisa que existan: {required_cols}.")
+            return None
 
         # Limpiamos los datos
-        df_clean = df[required_cols].dropna(subset=['municipio', 'minutos', 'centro_trabajo'])
-        df_clean['municipio'] = df_clean['municipio'].str.strip()
-        df_clean = df_clean[df_clean['municipio'] != '']
-        df_clean['minutos'] = pd.to_numeric(df_clean['minutos'], errors='coerce').fillna(0).astype(int)
-        df_clean['distancia'] = df_clean['distancia'].astype(str).str.replace(',', '.', regex=False)
-        df_clean['distancia'] = pd.to_numeric(df_clean['distancia'], errors='coerce').fillna(0).astype(float)
-        df_clean['centro_trabajo'] = df_clean['centro_trabajo'].str.strip()
-
-        # Si hay municipios duplicados, nos quedamos con la entrada que tiene más minutos
-        df_final = df_clean.loc[df_clean.groupby('municipio')['minutos'].idxmax()]
-
-        # Creamos un único diccionario donde la clave es el municipio y el valor es otro diccionario con sus datos
-        municipio_data = df_final.set_index('municipio').to_dict('index')
+        df_clean = df[required_cols].dropna(subset=['poblacion', 'centro_trabajo', 'provincia_ct'])
+        for col in ['poblacion', 'centro_trabajo', 'provincia_ct']:
+            df_clean[col] = df_clean[col].str.strip()
         
-        lista_municipios = sorted(municipio_data.keys(), key=lambda s: s.casefold())
+        # Convertir columnas numéricas, manejando errores
+        for col in ['distancia', 'minutos_total', 'minutos_cargo']:
+            df_clean[col] = df_clean[col].astype(str).str.replace(',', '.', regex=False)
+            df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
+
+        df_clean['minutos_total'] = df_clean['minutos_total'].astype(int)
+        df_clean['minutos_cargo'] = df_clean['minutos_cargo'].astype(int)
         
-        return municipio_data, lista_municipios
+        return df_clean
 
     except Exception as e:
         st.error(f"Error al procesar el archivo '{filename}': {e}")
-        return None, None
+        return None
 
 def calcular_minutos_con_limite(origen, destino, gmaps_client):
     try:
@@ -156,77 +155,87 @@ def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
     
-    # Define _cargo function here to be accessible by both tabs
+    # La función _cargo ahora solo se usa en la pestaña de Google
     def _cargo(minutos):
-        """Deduce 30 minutes from travel time, ensuring it doesn't go below zero."""
         return max(0, minutos - 30)
 
-    tab1, tab2 = st.tabs([" Cálculo Dentro de la Provincia (CSV) ", "  Cálculo Interprovincial (Google)  "])
+    tab1, tab2 = st.tabs([" Cálculo desde el archivo ", "  Cálculo fuera de la tabla  "])
     
     with tab1:
-        st.header("Cálculo Dentro de la Provincia (tiempos.csv)")
-        municipio_data, lista_municipios = cargar_datos_csv('tiempos.csv')
+        st.header("Cálculo de tiempos desde el archivo")
+        df_tiempos = cargar_datos_csv('tiempos.csv')
         
-        if municipio_data and lista_municipios:
-            st.markdown("---")
+        if df_tiempos is not None:
+            provincias_ct = sorted(df_tiempos['provincia_ct'].unique())
+            provincia_seleccionada = st.selectbox(
+                "1. Selecciona la provincia del Centro de Trabajo:",
+                provincias_ct, index=None, placeholder="Elige una provincia"
+            )
 
-            col1, col2 = st.columns(2)
-
-            with col1:
-                mun_entrada = st.selectbox(
-                    "Destino del comienzo de la jornada:",
-                    lista_municipios, index=None, placeholder="Selecciona un municipio"
-                )
-                if mun_entrada and mun_entrada in municipio_data:
-                    info = municipio_data.get(mun_entrada)
-                    st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
-
-            with col2:
-                mun_salida = st.selectbox(
-                    "Destino del final de la jornada:",
-                    lista_municipios, index=None, placeholder="Selecciona un municipio"
-                )
-                if mun_salida and mun_salida in municipio_data:
-                    info = municipio_data.get(mun_salida)
-                    st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
-
-            if mun_entrada and mun_salida:
+            if provincia_seleccionada:
+                df_filtrado = df_tiempos[df_tiempos['provincia_ct'] == provincia_seleccionada]
+                lista_poblaciones = sorted(df_filtrado['poblacion'].unique())
+                
                 st.markdown("---")
-                
-                # Minutos originales del CSV para los avisos
-                min_entrada_total = int(municipio_data[mun_entrada]['minutos'])
-                min_salida_total = int(municipio_data[mun_salida]['minutos'])
-                dist_entrada = float(municipio_data[mun_entrada]['distancia'])
-                dist_salida = float(municipio_data[mun_salida]['distancia'])
-                
-                # Aplicamos la regla de los 30 minutos a cada trayecto
-                min_entrada_a_cargo = _cargo(min_entrada_total)
-                min_salida_a_cargo = _cargo(min_salida_total)
-                
-                st.session_state.calculation_results['aviso_pernocta'] = min_entrada_total > 80 or min_salida_total > 80
-                st.session_state.calculation_results['aviso_dieta'] = dist_entrada > 40 or dist_salida > 40
-                st.session_state.calculation_results['aviso_jornada'] = min_entrada_total > 60 or min_salida_total > 60
-                
-                if st.session_state.calculation_results['aviso_pernocta']:
-                    st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
-                
-                if st.session_state.calculation_results['aviso_dieta']:
-                    st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
-                
-                if st.session_state.calculation_results['aviso_jornada']:
-                    st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
 
-                total_minutos_a_cargo = min_entrada_a_cargo + min_salida_a_cargo
-                
-                st.info(f"Minutos (entrada): **{min_entrada_a_cargo}** (Tiempo real: {min_entrada_total} min) | Minutos (salida): **{min_salida_a_cargo}** (Tiempo real: {min_salida_total} min)")
-                st.success(f"**Minutos totales de desplazamiento a cargo:** {total_minutos_a_cargo}")
-                
-                # Pasamos los minutos "a cargo" a la función de mostrar horas de salida
-                mostrar_horas_de_salida(total_minutos_a_cargo)
-                st.session_state.calculation_results['total_minutos'] = total_minutos_a_cargo
-                if st.button("📧 Enviar mail al equipo", key="btn_csv_mail"):
-                    st.session_state.page = 'email_form'
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    mun_entrada = st.selectbox(
+                        "2. Destino del comienzo de la jornada:",
+                        lista_poblaciones, index=None, placeholder="Selecciona una población"
+                    )
+                    if mun_entrada:
+                        # Asumimos una entrada por población-provincia_ct, tomamos la primera
+                        info = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
+                        st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
+
+                with col2:
+                    mun_salida = st.selectbox(
+                        "3. Destino del final de la jornada:",
+                        lista_poblaciones, index=None, placeholder="Selecciona una población"
+                    )
+                    if mun_salida:
+                        info = df_filtrado[df_filtrado['poblacion'] == mun_salida].iloc[0]
+                        st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
+
+                if mun_entrada and mun_salida:
+                    st.markdown("---")
+                    
+                    datos_entrada = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
+                    datos_salida = df_filtrado[df_filtrado['poblacion'] == mun_salida].iloc[0]
+                    
+                    # Usamos minutos_total para los avisos y minutos_cargo para el cálculo
+                    min_total_entrada = int(datos_entrada['minutos_total'])
+                    min_total_salida = int(datos_salida['minutos_total'])
+                    dist_entrada = float(datos_entrada['distancia'])
+                    dist_salida = float(datos_salida['distancia'])
+                    
+                    min_cargo_entrada = int(datos_entrada['minutos_cargo'])
+                    min_cargo_salida = int(datos_salida['minutos_cargo'])
+                    
+                    st.session_state.calculation_results['aviso_pernocta'] = min_total_entrada > 80 or min_total_salida > 80
+                    st.session_state.calculation_results['aviso_dieta'] = dist_entrada > 40 or dist_salida > 40
+                    st.session_state.calculation_results['aviso_jornada'] = min_total_entrada > 60 or min_total_salida > 60
+                    
+                    if st.session_state.calculation_results['aviso_pernocta']:
+                        st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
+                    
+                    if st.session_state.calculation_results['aviso_dieta']:
+                        st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                    
+                    if st.session_state.calculation_results['aviso_jornada']:
+                        st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
+
+                    total_minutos_a_cargo = min_cargo_entrada + min_cargo_salida
+                    
+                    st.info(f"**Entrada:** De `{datos_entrada['centro_trabajo']}` a `{mun_entrada}`\n\n**Salida:** De `{mun_salida}` a `{datos_salida['centro_trabajo']}`")
+                    st.success(f"**Minutos totales de desplazamiento a cargo:** {total_minutos_a_cargo}")
+                    
+                    mostrar_horas_de_salida(total_minutos_a_cargo)
+                    st.session_state.calculation_results['total_minutos'] = total_minutos_a_cargo
+                    if st.button("📧 Enviar mail al equipo", key="btn_csv_mail"):
+                        st.session_state.page = 'email_form'
+                        st.rerun()
 
     with tab2:
         st.header("Cálculo por distancia (Regla 90 km/h)")
@@ -263,7 +272,6 @@ def full_calculator_app():
 
         if st.session_state.gmaps_results:
             res = st.session_state.gmaps_results
-            # The problematic `if st.` line used to be around here. It's now removed.
             es_identico = res['origen_ida'].strip().lower() == res['destino_vuelta'].strip().lower() and res['destino_ida'].strip().lower() == res['origen_vuelta'].strip().lower()
             
             if es_identico:
@@ -340,7 +348,6 @@ def email_form_app():
     destinatarios_df = employees_df[employees_df['NOMBRE COMPLETO'].isin(nombres_seleccionados)]
     recipient_emails = destinatarios_df['EMAIL'].tolist()
 
-    # Original problematic line was here: if st.
     def crear_saludo(nombres):
         if not nombres: return "Hola,"
         nombres_cortos = [name.split()[0] for name in nombres]
