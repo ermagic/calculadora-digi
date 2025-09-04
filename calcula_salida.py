@@ -222,7 +222,7 @@ def full_calculator_app():
                         st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
                     
                     if st.session_state.calculation_results['aviso_dieta']:
-                        st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                        st.warning("⚠️ **Atención Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
                     
                     if st.session_state.calculation_results['aviso_jornada']:
                         st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
@@ -239,7 +239,7 @@ def full_calculator_app():
                         st.rerun()
 
     with tab2:
-        st.header("Cálculo por distancia (Regla 90 km/h)")
+        st.header("Cálculo por distancia (Reglas ponderadas)")
         try: gmaps = googlemaps.Client(key=st.secrets["google_api_key"])
         except Exception: st.error("Error: La clave de API de Google no está disponible en `secrets.toml`."); st.stop()
         
@@ -286,7 +286,7 @@ def full_calculator_app():
                 if st.session_state.calculation_results['aviso_pernocta']:
                     st.warning(f"🛌 **Aviso Pernocta:** El trayecto ({mins} min) supera los 80 minutos. Comprueba posible pernocta.")
                 if st.session_state.calculation_results['aviso_dieta']:
-                    st.warning(f"⚠️ **Aviso Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km. Comprueba el tipo de jornada.")
+                    st.warning(f"⚠️ **Atención Media Dieta:** El trayecto ({dist:.1f} km) supera los 40km. Comprueba el tipo de jornada.")
                 if st.session_state.calculation_results['aviso_jornada']:
                     st.warning(f"⏰ **Aviso Jornada:** El trayecto ({mins} min) supera los 60 minutos. Comprueba el tipo de jornada.")
                 
@@ -300,7 +300,7 @@ def full_calculator_app():
                 if st.session_state.calculation_results['aviso_pernocta']:
                     st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos. Comprueba posible pernocta.")
                 if st.session_state.calculation_results['aviso_dieta']:
-                    st.warning("⚠️ **Aviso Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
+                    st.warning("⚠️ **Atención Media Dieta:** Uno o ambos trayectos superan los 40km. Comprueba el tipo de jornada.")
                 if st.session_state.calculation_results['aviso_jornada']:
                     st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos. Comprueba el tipo de jornada.")
                 
@@ -410,4 +410,5 @@ if check_login():
         full_calculator_app()
     elif st.session_state.page == 'email_form':
         email_form_app()
+
 
