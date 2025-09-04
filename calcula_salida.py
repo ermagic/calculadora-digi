@@ -40,7 +40,10 @@ def check_login():
 @st.cache_data
 def cargar_datos_csv(filename):
     try:
-        df = pd.read_csv(filename, delimiter=';', encoding='utf-8-sig', header=0)
+        # --- CAMBIO IMPORTANTE AQUÍ ---
+        # Cambiamos la codificación a 'latin-1' para que pueda leer caracteres como tildes
+        # guardados desde Excel en Windows.
+        df = pd.read_csv(filename, delimiter=';', encoding='latin-1', header=0)
         
         # --- NOMBRES DE COLUMNAS NUEVOS ---
         col_poblacion = 'Poblacion_IC'
@@ -139,7 +142,8 @@ def mostrar_horas_de_salida(total_minutos_desplazamiento):
 @st.cache_data
 def cargar_datos_empleados(filename="employees.csv"):
     try:
-        df = pd.read_csv(filename, delimiter='|', encoding='utf-8-sig')
+        # También aplicamos el mismo cambio aquí por si acaso
+        df = pd.read_csv(filename, delimiter='|', encoding='latin-1')
     except FileNotFoundError: st.error(f"❌ Error: No se encuentra el archivo '{filename}'."); return None
     except Exception as e: st.error(f"Error al procesar '{filename}'. Revisa que el separador sea '|'. Error: {e}"); return None
     try:
@@ -155,7 +159,6 @@ def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
     
-    # La función _cargo ahora solo se usa en la pestaña de Google
     def _cargo(minutos):
         return max(0, minutos - 30)
 
@@ -185,7 +188,6 @@ def full_calculator_app():
                         lista_poblaciones, index=None, placeholder="Selecciona una población"
                     )
                     if mun_entrada:
-                        # Asumimos una entrada por población-provincia_ct, tomamos la primera
                         info = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
                         st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
 
@@ -204,7 +206,6 @@ def full_calculator_app():
                     datos_entrada = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
                     datos_salida = df_filtrado[df_filtrado['poblacion'] == mun_salida].iloc[0]
                     
-                    # Usamos minutos_total para los avisos y minutos_cargo para el cálculo
                     min_total_entrada = int(datos_entrada['minutos_total'])
                     min_total_salida = int(datos_salida['minutos_total'])
                     dist_entrada = float(datos_entrada['distancia'])
