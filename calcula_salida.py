@@ -49,7 +49,7 @@ def cargar_datos_csv(filename):
         col_poblacion = 'Poblacion_IC'
         col_centro_trabajo = 'Centro de Trabajo Nuevo'
         col_provincia_ct = 'Provincia Centro de Trabajo'
-        col_distancia = 'Distancia en K'
+        col_distancia = 'Distancia en Kms'
         col_minutos_total = 'Tiempo(Min)'
         col_minutos_cargo = 'Tiempo a cargo de empresa(Min)'
 
@@ -410,3 +410,4 @@ if check_login():
         full_calculator_app()
     elif st.session_state.page == 'email_form':
         email_form_app()
+
