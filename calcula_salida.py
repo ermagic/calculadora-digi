@@ -316,11 +316,16 @@ def email_form_app():
     asunto = st.text_input("Asunto:", asunto_pred)
     cuerpo = st.text_area("Cuerpo del Mensaje:", cuerpo_pred, height=300)
     st.markdown("---")
-    if st.button("🚀 Enviar Email", type="primary"):
-        with st.spinner("Enviando correo..."):
-            recipient_emails = destinatarios_df['EMAIL'].tolist()
-            if send_email(recipient_emails, asunto, cuerpo): st.success("¡Correo enviado correctamente!")
-            else: st.error("Hubo un problema al enviar el correo.")
+    
+    # El botón de envío se muestra deshabilitado y no es funcional.
+    st.button("🚀 Enviar Email", type="primary", disabled=True, help="La función de envío está desactivada temporalmente.")
+
+    # Se elimina la lógica de envío que estaba asociada al botón.
+    # if st.button("🚀 Enviar Email", type="primary"):
+    #     with st.spinner("Enviando correo..."):
+    #         recipient_emails = destinatarios_df['EMAIL'].tolist()
+    #         if send_email(recipient_emails, asunto, cuerpo): st.success("¡Correo enviado correctamente!")
+    #         else: st.error("Hubo un problema al enviar el correo.")
 
 def send_email(recipients, subject, body):
     try:
@@ -338,5 +343,6 @@ def send_email(recipients, subject, body):
 if check_login():
     if st.session_state.page == 'calculator': full_calculator_app()
     elif st.session_state.page == 'email_form': email_form_app()
+
 
 
