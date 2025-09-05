@@ -125,10 +125,24 @@ def mostrar_horas_de_salida(total_minutos_desplazamiento):
 def cargar_datos_empleados(filename="employees.csv"):
     try:
         df = pd.read_csv(filename, delimiter='|', encoding='latin-1')
-        required_cols = ['PROVINCIA', 'EQUIPO', 'NOMBRE COMPLETO', 'EMAIL']
+        # Añadimos 'PERSONAL' a las columnas requeridas
+        required_cols = ['PROVINCIA', 'EQUIPO', 'NOMBRE COMPLETO', 'EMAIL', 'PERSONAL']
+        
+        # Verificamos que todas las columnas necesarias existan
+        if not all(col in df.columns for col in required_cols):
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            st.error(f"❌ Error en '{filename}': Faltan las siguientes columnas obligatorias: {missing_cols}")
+            return None
+
         df = df.dropna(subset=required_cols)
-        for col in required_cols: df[col] = df[col].str.strip()
-        return df
+        for col in required_cols: 
+            if isinstance(df[col].iloc[0], str): # Solo aplicar .str a columnas de texto
+                df[col] = df[col].str.strip()
+
+        # Filtramos para quedarnos solo con el personal 'Activo' (insensible a mayúsculas/minúsculas)
+        df_activos = df[df['PERSONAL'].str.lower() == 'activo'].copy()
+        
+        return df_activos
     except FileNotFoundError: st.error(f"❌ Error: No se encuentra el archivo '{filename}'."); return None
     except Exception as e: st.error(f"Error al procesar '{filename}'. Error: {e}"); return None
 
@@ -324,4 +338,5 @@ def send_email(recipients, subject, body):
 if check_login():
     if st.session_state.page == 'calculator': full_calculator_app()
     elif st.session_state.page == 'email_form': email_form_app()
+
 
