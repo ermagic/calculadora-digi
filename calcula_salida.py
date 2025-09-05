@@ -125,23 +125,16 @@ def mostrar_horas_de_salida(total_minutos_desplazamiento):
 def cargar_datos_empleados(filename="employees.csv"):
     try:
         df = pd.read_csv(filename, delimiter='|', encoding='latin-1')
-        # Añadimos 'PERSONAL' a las columnas requeridas
         required_cols = ['PROVINCIA', 'EQUIPO', 'NOMBRE COMPLETO', 'EMAIL', 'PERSONAL']
-        
-        # Verificamos que todas las columnas necesarias existan
         if not all(col in df.columns for col in required_cols):
             missing_cols = [col for col in required_cols if col not in df.columns]
             st.error(f"❌ Error en '{filename}': Faltan las siguientes columnas obligatorias: {missing_cols}")
             return None
-
         df = df.dropna(subset=required_cols)
         for col in required_cols: 
-            if isinstance(df[col].iloc[0], str): # Solo aplicar .str a columnas de texto
+            if isinstance(df[col].iloc[0], str):
                 df[col] = df[col].str.strip()
-
-        # Filtramos para quedarnos solo con el personal 'Activo' (insensible a mayúsculas/minúsculas)
         df_activos = df[df['PERSONAL'].str.lower() == 'activo'].copy()
-        
         return df_activos
     except FileNotFoundError: st.error(f"❌ Error: No se encuentra el archivo '{filename}'."); return None
     except Exception as e: st.error(f"Error al procesar '{filename}'. Error: {e}"); return None
@@ -151,7 +144,6 @@ def full_calculator_app():
     st.image("logo_digi.png", width=250)
     st.title(f"Bienvenido, {st.session_state['username']}!")
     
-    # Cargamos los datos del CSV aquí para que estén disponibles en ambas pestañas
     df_tiempos = cargar_datos_csv('tiempos.csv')
 
     def _cargo(minutos):
@@ -172,20 +164,26 @@ def full_calculator_app():
                 with col1:
                     mun_entrada = st.selectbox("2. Destino del comienzo de la jornada:", lista_poblaciones, index=None, placeholder="Selecciona una población")
                     if mun_entrada:
-                        info = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
-                        st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
+                        info_entrada = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
+                        st.info(f"**Centro de Trabajo:** {info_entrada['centro_trabajo']}")
                 with col2:
                     mun_salida = st.selectbox("3. Destino del final de la jornada:", lista_poblaciones, index=None, placeholder="Selecciona una población")
                     if mun_salida:
-                        info = df_filtrado[df_filtrado['poblacion'] == mun_salida].iloc[0]
-                        st.info(f"**Centro de Trabajo:** {info['centro_trabajo']}\n\n**Distancia:** {info['distancia']} km")
+                        info_salida = df_filtrado[df_filtrado['poblacion'] == mun_salida].iloc[0]
+                        st.info(f"**Centro de Trabajo:** {info_salida['centro_trabajo']}")
                 if mun_entrada and mun_salida:
                     st.markdown("---")
                     datos_entrada = df_filtrado[df_filtrado['poblacion'] == mun_entrada].iloc[0]
                     datos_salida = df_filtrado[df_filtrado['poblacion'] == mun_salida].iloc[0]
-                    min_total_entrada, min_total_salida = int(datos_entrada['minutos_total']), int(datos_salida['minutos_total'])
-                    dist_entrada, dist_salida = float(datos_entrada['distancia']), float(datos_salida['distancia'])
-                    min_cargo_entrada, min_cargo_salida = int(datos_entrada['minutos_cargo']), int(datos_salida['minutos_cargo'])
+                    
+                    min_total_entrada = int(datos_entrada['minutos_total'])
+                    dist_entrada = float(datos_entrada['distancia'])
+                    min_cargo_entrada = int(datos_entrada['minutos_cargo'])
+                    
+                    min_total_salida = int(datos_salida['minutos_total'])
+                    dist_salida = float(datos_salida['distancia'])
+                    min_cargo_salida = int(datos_salida['minutos_cargo'])
+                    
                     st.session_state.calculation_results.update({
                         'aviso_pernocta': min_total_entrada > 80 or min_total_salida > 80,
                         'aviso_dieta': dist_entrada > 40 or dist_salida > 40,
@@ -196,9 +194,30 @@ def full_calculator_app():
                     if st.session_state.calculation_results['aviso_pernocta']: st.warning("🛌 **Aviso Pernocta:** Uno o ambos trayectos superan los 80 minutos.")
                     if st.session_state.calculation_results['aviso_dieta']: st.warning("⚠️ **Atención Media Dieta:** Uno o ambos trayectos superan los 40km.")
                     if st.session_state.calculation_results['aviso_jornada']: st.warning("⏰ **Aviso Jornada:** Uno o ambos trayectos superan los 60 minutos.")
+                    
+                    st.markdown("---")
+                    
+                    # --- NUEVO BLOQUE DE RESULTADOS DETALLADOS ---
+                    col_res1, col_res2 = st.columns(2)
+                    with col_res1:
+                        st.subheader("Viaje de Ida")
+                        st.markdown(f"**{st.session_state.calculation_results['trayecto_entrada']}**")
+                        st.metric("Distancia", f"{dist_entrada} km")
+                        st.metric("Tiempo de viaje", f"{min_total_entrada} min")
+                        st.metric("A cargo de la empresa", f"{min_cargo_entrada} min")
+
+                    with col_res2:
+                        st.subheader("Viaje de Vuelta")
+                        st.markdown(f"**{st.session_state.calculation_results['trayecto_salida']}**")
+                        st.metric("Distancia", f"{dist_salida} km")
+                        st.metric("Tiempo de viaje", f"{min_total_salida} min")
+                        st.metric("A cargo de la empresa", f"{min_cargo_salida} min")
+                    
+                    st.markdown("---")
+                    
                     total_minutos_a_cargo = min_cargo_entrada + min_cargo_salida
-                    st.info(f"**Entrada:** {st.session_state.calculation_results['trayecto_entrada']}\n\n**Salida:** {st.session_state.calculation_results['trayecto_salida']}")
-                    st.success(f"**Minutos totales de desplazamiento a cargo:** {total_minutos_a_cargo}")
+                    st.success(f"**Tiempo total a restar de la jornada:** {total_minutos_a_cargo} minutos")
+                    
                     mostrar_horas_de_salida(total_minutos_a_cargo)
                     st.session_state.calculation_results['total_minutos'] = total_minutos_a_cargo
                     if st.button("📧 Enviar mail al equipo", key="btn_csv_mail"): st.session_state.page = 'email_form'; st.rerun()
@@ -269,7 +288,7 @@ def full_calculator_app():
                 st.metric(f"VUELTA: {res['dist_vuelta']:.1f} km", f"{_cargo(res['min_vuelta'])} min a cargo", f"Tiempo total: {res['min_vuelta']} min", delta_color="off")
                 total_final = _cargo(res['min_ida']) + _cargo(res['min_vuelta'])
             st.markdown("---")
-            st.success(f"**Minutos totales de desplazamiento a cargo:** {total_final}")
+            st.success(f"**Tiempo total a restar de la jornada:** {total_final} minutos")
             mostrar_horas_de_salida(total_final)
             st.session_state.calculation_results['total_minutos'] = total_final
             if st.button("📧 Enviar mail al equipo", key="btn_gmaps_mail"): st.session_state.page = 'email_form'; st.rerun()
@@ -317,15 +336,7 @@ def email_form_app():
     cuerpo = st.text_area("Cuerpo del Mensaje:", cuerpo_pred, height=300)
     st.markdown("---")
     
-    # El botón de envío se muestra deshabilitado y no es funcional.
     st.button("🚀 Enviar Email", type="primary", disabled=True, help="La función de envío está desactivada temporalmente.")
-
-    # Se elimina la lógica de envío que estaba asociada al botón.
-    # if st.button("🚀 Enviar Email", type="primary"):
-    #     with st.spinner("Enviando correo..."):
-    #         recipient_emails = destinatarios_df['EMAIL'].tolist()
-    #         if send_email(recipient_emails, asunto, cuerpo): st.success("¡Correo enviado correctamente!")
-    #         else: st.error("Hubo un problema al enviar el correo.")
 
 def send_email(recipients, subject, body):
     try:
@@ -343,6 +354,4 @@ def send_email(recipients, subject, body):
 if check_login():
     if st.session_state.page == 'calculator': full_calculator_app()
     elif st.session_state.page == 'email_form': email_form_app()
-
-
 
